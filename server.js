@@ -139,6 +139,32 @@ io.on('connection', socket => {
     broadcastRoom(room);
   });
 
+  // Relay validated player movement/state snapshots to teammates. This syncs avatars,
+  // not zombie AI, bullets, damage, or wave progression (those remain client-local).
+  socket.on('game:state', payload => {
+    const code = socketRoom.get(socket.id);
+    const room = rooms.get(code);
+    if (!room || room.phase !== 'starting') return;
+    const player = room.players.get(socket.id);
+    if (!player || !payload || typeof payload !== 'object') return;
+    const num = (v, min, max) => Number.isFinite(Number(v)) ? Math.max(min, Math.min(max, Number(v))) : 0;
+    player.gameState = {
+      id: socket.id,
+      name: safeName(payload.name || player.name),
+      x: num(payload.x, -100000, 100000),
+      y: num(payload.y, -100000, 100000),
+      angle: num(payload.angle, -Math.PI * 4, Math.PI * 4),
+      hp: num(payload.hp, 0, 100000),
+      level: Math.round(num(payload.level, 1, 10000)),
+      alive: payload.alive === true,
+      at: Date.now()
+    };
+    const players = [...room.players.values()]
+      .filter(p => p.gameState && Date.now() - p.gameState.at < 5000)
+      .map(p => p.gameState);
+    io.to(room.code).emit('game:state', { code: room.code, players });
+  });
+
   socket.on('room:leave', () => removeFromRoom(socket));
   socket.on('disconnect', () => removeFromRoom(socket));
 });
@@ -147,3 +173,4 @@ const port = Number(process.env.PORT || 3000);
 server.listen(port, '0.0.0.0', () => {
   console.log(`Last 1 Percent online lobby listening on port ${port}`);
 });
+    
