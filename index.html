@@ -274,6 +274,7 @@
           <div style="font-size:10px;color:#8a9bb0;" id="onlineSelfGun">Gun Lv.1</div>
         </div>
       </div>
+      <div class="row" style="align-items:center"><select id="roomModeSelect" aria-label="Game mode" style="flex:1;min-width:0;background:#17212c;color:#fff;border:1px solid #3a4a5c;border-radius:8px;padding:9px"><option value="coop">Co-op Survival · 4 Players</option><option value="4v4">Team Battle · 8 Players</option></select></div>
       <div class="row"><button id="createRoomBtn" class="btn btn-primary">Create Room</button><button id="refreshRoomsBtn" class="btn">Refresh</button></div>
       <div class="row" style="margin-top:4px"><button id="wakeServerBtn" class="btn" style="flex:1">Wake Server</button><button id="setServerBtn" class="btn" style="flex:1">Change Server URL</button></div>
       <div class="row" style="margin-top:8px"><input id="roomCodeInput" placeholder="Room code" maxlength="6" style="width:45%;min-width:0"><button id="joinRoomBtn" class="btn">Join Room</button></div>
@@ -434,6 +435,9 @@
   try { const s = JSON.parse(localStorage.getItem('l1p_v3') || 'null'); if (s && typeof s === 'object') state = { ...state, ...s, running: false, paused: false, dead: false }; } catch (e) { localStorage.removeItem('l1p_v3'); }
 
   let player = { x: 0, y: 0, speed: 195, angle: 0, recoil: 0 };
+  // Remote squad members are drawn in world coordinates when an online match is active.
+  const remotePlayers = new Map();
+  let lastOnlinePositionAt = 0;
   let bullets = [], zombies = [], particles = [], powerups = [], floatingTexts = [];
   let keys = {}, stick = { x: 0, y: 0 };
   let attackHeld = false, attackReq = false;
@@ -1145,6 +1149,10 @@
       if (waveAnnounce>0) { waveAnnounce-=dt; if(waveAnnounce<=0)$('waveBanner').classList.remove('show'); }
       shake = Math.max(0, shake-dt);
     }
+    if (state.running && !state.dead && performance.now() - lastOnlinePositionAt > 65) {
+      lastOnlinePositionAt = performance.now();
+      if (window.L1POnline) window.L1POnline.sendPosition({ x: player.x, y: player.y, angle: player.angle, hp: state.hp });
+    }
     const shx = shake>0?rand(-4,4)*shake:0, shy = shake>0?rand(-4,4)*shake:0;
     ctx.fillStyle = nightMode ? '#050810' : '#0a0e14'; ctx.fillRect(0,0,w,h);
     ctx.save(); ctx.translate(w/2-player.x+shx, h/2-player.y+shy);
@@ -1196,7 +1204,18 @@
     const wep=getWep(), recoilOff=player.recoil*4;
     if (wep.kind==='melee') { ctx.fillStyle='#bdc3c7'; ctx.save(); ctx.translate(18-recoilOff,0); ctx.rotate(-0.3+player.recoil*0.8); ctx.fillRect(0,-3,28,5); ctx.fillStyle='#7f8c8d';ctx.fillRect(22,-5,8,9); ctx.restore(); }
     else { ctx.fillStyle='#1a252f';ctx.strokeStyle='#5d6d7e';ctx.lineWidth=1.2; ctx.beginPath();ctx.roundRect(12-recoilOff,-4,24,6,2);ctx.fill();ctx.stroke(); ctx.fillStyle='#85929e';ctx.fillRect(28-recoilOff,-2,12,2.5); ctx.fillStyle='#2c3e50';ctx.fillRect(16,1,5,6); }
-    ctx.restore(); ctx.restore();
+    ctx.restore();
+    remotePlayers.forEach(rp => {
+      if (!Number.isFinite(rp.x) || !Number.isFinite(rp.y)) return;
+      ctx.save(); ctx.translate(rp.x, rp.y); ctx.rotate(Number(rp.angle) || 0);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(0, 9, 18, 12, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = rp.team === 'B' ? '#e74c3c' : '#3498db'; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(-10, -12, 20, 25, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#f5d773'; ctx.fillRect(5, -3, 20, 5);
+      ctx.rotate(-(Number(rp.angle) || 0)); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(String(rp.name || 'Player').slice(0, 18), 0, -23);
+      ctx.fillStyle = '#202830'; ctx.fillRect(-15, -31, 30, 4); ctx.fillStyle = '#2ecc71'; ctx.fillRect(-15, -31, 30 * Math.max(0, Math.min(1, (Number(rp.hp) || 0) / 100)), 4); ctx.restore();
+    });
+    ctx.restore();
     floatingTexts.forEach(f => { const sx=w/2+(f.x-player.x), sy=h/2+(f.y-player.y); ctx.globalAlpha=Math.min(1,f.life*1.5); ctx.fillStyle=f.color; ctx.font=`bold ${f.size||15}px system-ui`; ctx.textAlign='center'; ctx.fillText(f.text,sx,sy); ctx.globalAlpha=1; });
 
     // ===== MINI-MAP (screen corner) — phone-friendly, orientation-aware =====
@@ -1295,6 +1314,7 @@
     if (!showCombat) { attackHeld=false; attackReq=false; }
     updateUI(); requestAnimationFrame(loop);
   }
+  window.__L1PRemotePlayers = remotePlayers;
   requestAnimationFrame(loop);
 })();
 </script>
@@ -1304,6 +1324,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   let socket = null, currentRoom = null, isHost = false, isReady = false;
+  const remotePlayers = new Map();
 
   // Hardcoded deployed server (Render). Override via localStorage if needed.
   const DEFAULT_SERVER = 'https://last-1-percent-server.onrender.com';
@@ -1329,7 +1350,7 @@
   function playerPayload() {
     const name = (window.state && window.state.name) || localStorage.getItem('l1p_name') || 'Player';
     const country = (window.state && window.state.country) || localStorage.getItem('l1p_country') || '';
-    return { name, country };
+    return { name, country, mode: (($('roomModeSelect') && $('roomModeSelect').value) || 'coop') };
   }
 
   function connect() {
@@ -1391,6 +1412,7 @@
 
     socket.on('room:joined', (d) => {
       currentRoom = d && d.code;
+      isHost = false;
       isReady = false;
       if ($('roomCodeInput') && currentRoom) $('roomCodeInput').value = currentRoom;
       status('Joined room ' + currentRoom, true);
@@ -1409,7 +1431,7 @@
 
       if ($('lobbyPlayers')) {
         $('lobbyPlayers').innerHTML =
-          '<b>Room ' + safe(room.code) + ' • ' + (room.players || []).length + '/4</b><br>' +
+          '<b>Room ' + safe(room.code) + ' • ' + (room.players || []).length + '/' + (room.maxPlayers || 4) + ' · ' + safe(room.mode || 'coop') + '</b><br>' +
           list +
           '<div class="row" style="margin-top:8px">' +
           '<button id="readyOnlineBtn" class="btn">' + (isReady ? 'Unready' : 'Ready') + '</button>' +
@@ -1510,6 +1532,17 @@
       if ($('onlineSelfGun')) $('onlineSelfGun').textContent = 'Gun Lv.' + lv + ' · High wave ' + (st.highWave || 1);
     } catch (e) {}
   }
+  window.L1POnline = {
+    sendPosition(data) { if (socket && socket.connected && currentRoom) socket.emit('match:move', data); },
+    sendShot(data) { if (socket && socket.connected && currentRoom) socket.emit('match:shoot', data || {}); },
+    setRemotePlayers(list) {
+      const target = window.__L1PRemotePlayers;
+      if (target instanceof Map) {
+        target.clear(); (list || []).forEach(p => { if (p && p.id !== (socket && socket.id)) target.set(p.id, p); });
+      }
+    }
+  };
+
   function wireButtons() {
     if ($('createRoomBtn')) $('createRoomBtn').onclick = create;
     if ($('refreshRoomsBtn')) $('refreshRoomsBtn').onclick = refresh;
