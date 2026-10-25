@@ -322,14 +322,7 @@
     { name: 'Chicken Launcher', dmg: 48, cost: 1500, mag: 5, reload: 1.6, fireRate: 0.45, range: 340, bulletSpeed: 480, kind: 'gun', spread: 0.08, pellets: 1, color: '#f39c12', special: 'explode' },
     { name: 'Banana Peel Gun', dmg: 22, cost: 2200, mag: 16, reload: 1.2, fireRate: 0.15, range: 300, bulletSpeed: 560, kind: 'gun', spread: 0.10, pellets: 1, color: '#f1c40f', special: 'slow' },
     { name: 'Combat Shotgun', dmg: 18, cost: 4500, mag: 6, reload: 1.8, fireRate: 0.55, range: 200, bulletSpeed: 700, kind: 'gun', spread: 0.22, pellets: 7, color: '#e67e22' },
-    { name: 'Frost SMG', dmg: 16, cost: 7000, mag: 30, reload: 1.4, fireRate: 0.08, range: 380, bulletSpeed: 720, kind: 'gun', spread: 0.06, pellets: 1, color: '#5dade2', special: 'slow' },
-    { name: 'Laser Disco', dmg: 20, cost: 11000, mag: 35, reload: 1.3, fireRate: 0.07, range: 450, bulletSpeed: 950, kind: 'gun', spread: 0.02, pellets: 1, color: '#9b59b6', special: 'pierce' },
-    { name: 'Poison Dart', dmg: 30, cost: 15000, mag: 10, reload: 1.5, fireRate: 0.28, range: 420, bulletSpeed: 600, kind: 'gun', spread: 0.03, pellets: 1, color: '#27ae60', special: 'slow' },
-    { name: 'Flame Thrower', dmg: 12, cost: 20000, mag: 40, reload: 2.0, fireRate: 0.05, range: 180, bulletSpeed: 400, kind: 'gun', spread: 0.15, pellets: 2, color: '#e67e22', special: 'explode' },
-    { name: 'Rocket Fist', dmg: 95, cost: 28000, mag: 4, reload: 2.1, fireRate: 0.70, range: 480, bulletSpeed: 420, kind: 'gun', spread: 0.03, pellets: 1, color: '#e74c3c', special: 'explode' },
-    { name: 'Plasma Rifle', dmg: 42, cost: 38000, mag: 18, reload: 1.5, fireRate: 0.18, range: 500, bulletSpeed: 820, kind: 'gun', spread: 0.03, pellets: 1, color: '#1abc9c', special: 'pierce' },
-    { name: 'Thunder Cannon', dmg: 110, cost: 52000, mag: 4, reload: 2.3, fireRate: 0.75, range: 560, bulletSpeed: 580, kind: 'gun', spread: 0.04, pellets: 1, color: '#f39c12', special: 'explode' },
-    { name: 'Void Sniper', dmg: 160, cost: 70000, mag: 5, reload: 2.0, fireRate: 0.85, range: 700, bulletSpeed: 1100, kind: 'gun', spread: 0.01, pellets: 1, color: '#8e44ad', special: 'pierce' },
+    { name: 'Frost SMG', dmg: 16, cost: 7000, mag: 5, reload: 2.0, fireRate: 0.85, range: 700, bulletSpeed: 1100, kind: 'gun', spread: 0.01, pellets: 1, color: '#8e44ad', special: 'pierce' },
     { name: 'Nano Swarm', dmg: 15, cost: 90000, mag: 50, reload: 1.8, fireRate: 0.04, range: 320, bulletSpeed: 500, kind: 'gun', spread: 0.18, pellets: 3, color: '#3498db' },
     { name: 'Meteor Gun', dmg: 140, cost: 120000, mag: 3, reload: 2.5, fireRate: 0.90, range: 450, bulletSpeed: 400, kind: 'gun', spread: 0.05, pellets: 1, color: '#c0392b', special: 'explode' },
     { name: 'Quantum Blade', dmg: 200, cost: 160000, mag: 1, reload: 0.5, fireRate: 0.40, range: 120, bulletSpeed: 0, kind: 'melee', spread: 0, pellets: 1, color: '#00cec9' },
@@ -774,36 +767,13 @@
     if (btn) btn.textContent = 'NIGHT MODE: ' + (on ? 'ON' : 'OFF');
   }
 
-  // Multiplayer connection stub (Phase 2)
+  // Old Colyseus stub disabled — real lobby uses Socket.IO script at bottom of page.
   let multiClient = null;
   let multiRoom = null;
-  const MULTIPLAYER_SERVER = localStorage.getItem('l1p_server_url') || ''; // e.g. wss://your-server.railway.app
-
+  const MULTIPLAYER_SERVER = '';
   async function connectMultiplayer() {
-    const status = $('serverStatus');
-    if (!MULTIPLAYER_SERVER) {
-      status.textContent = 'Server: Not configured (Solo only)';
-      status.className = 'offline';
-      return false;
-    }
-    status.textContent = 'Server: Connecting...';
-    try {
-      // Colyseus client will be loaded when available
-      // import { Client } from "colyseus.js" or CDN
-      if (typeof Colyseus === 'undefined') {
-        status.textContent = 'Server: Colyseus client not loaded';
-        status.className = 'offline';
-        return false;
-      }
-      multiClient = new Colyseus.Client(MULTIPLAYER_SERVER);
-      status.textContent = 'Server: Online';
-      status.className = 'online';
-      return true;
-    } catch (e) {
-      status.textContent = 'Server: Offline – Solo mode active';
-      status.className = 'offline';
-      return false;
-    }
+    // Intentionally does not touch #serverStatus (Socket.IO client owns it)
+    return false;
   }
 
   async function createMultiRoom() {
@@ -1076,79 +1046,215 @@
   requestAnimationFrame(loop);
 })();
 </script>
-
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   let socket = null, currentRoom = null, isHost = false, isReady = false;
-  const SERVER = 'https://last-1-percent-server.onrender.com';
-  function status(msg, online=false) { const el=$('serverStatus'); if(el){el.textContent=msg;el.className=online?'online':'offline';} }
-  function safe(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function connect(){
-    if(!window.io){status('Socket.IO failed to load');return false;}
-    if(socket){if(socket.connected)return true;socket.connect();return true;}
+
+  // Hardcoded deployed server (Render). Override via localStorage if needed.
+  const DEFAULT_SERVER = 'https://last-1-percent-server.onrender.com';
+  function getServerUrl() {
+    const saved = (localStorage.getItem('l1p_server_url') || '').trim().replace(/\/+$/, '');
+    return saved || DEFAULT_SERVER;
+  }
+
+  function status(msg, online = false) {
+    const el = $('serverStatus');
+    if (el) {
+      el.textContent = msg;
+      el.className = online ? 'online' : 'offline';
+    }
+  }
+
+  function safe(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function playerPayload() {
+    const name = (window.state && window.state.name) || localStorage.getItem('l1p_name') || 'Player';
+    const country = (window.state && window.state.country) || localStorage.getItem('l1p_country') || '';
+    return { name, country };
+  }
+
+  function connect() {
+    if (!window.io) {
+      status('Socket.IO library failed to load (CDN blocked?)');
+      return false;
+    }
+
+    if (socket) {
+      if (socket.connected) return true;
+      socket.connect();
+      return true;
+    }
+
+    const SERVER = getServerUrl();
     status('Connecting to online server…');
-    socket=io(SERVER,{transports:['websocket','polling'],timeout:12000,reconnection:true});
-    socket.on('connect',()=>{status('Server: connected ✓',true);socket.emit('rooms:list');});
-    socket.on('connect_error',()=>status('Server connection failed — try Refresh'));
-    socket.on('disconnect',()=>status('Server disconnected'));
-    socket.on('room:created',d=>{currentRoom=d.code;isHost=true;$('roomCodeInput').value=d.code;status('Room created: '+d.code,true);});
-    socket.on('room:joined',d=>{currentRoom=d.code;$('roomCodeInput').value=d.code;status('Joined room '+d.code,true);});
-    socket.on('room:update',room=>{
-      currentRoom=room.code; isHost=!!room.players?.find(p=>p.id===socket.id)?.host;
-      $('roomCodeInput').value=room.code;
-      $('lobbyPlayers').innerHTML='<b>Room '+safe(room.code)+' • '+room.players.length+'/4</b><br>'+room.players.map(p=>'👤 '+safe(p.name)+(p.host?' 👑':'')+(p.ready?' ✅':' ⏳')).join('<br>')+
-      '<div class="row" style="margin-top:8px"><button id="readyOnlineBtn" class="btn">'+(isReady?'Unready':'Ready')+'</button><button id="startOnlineBtn" class="btn btn-primary" '+(!isHost?'disabled':'')+'>Host: Start</button><button id="leaveOnlineBtn" class="btn">Leave</button></div>';
-      $('readyOnlineBtn').onclick=()=>{isReady=!isReady;socket.emit('room:ready',{ready:isReady});};
-      $('startOnlineBtn').onclick=()=>socket.emit('room:start');
-      $('leaveOnlineBtn').onclick=()=>{socket.emit('room:leave');currentRoom=null;isReady=false;$('lobbyPlayers').innerHTML='';$('roomCodeInput').value='';socket.emit('rooms:list');};
+
+    // polling first is more reliable on some mobile networks / Render free tier wake-up
+    socket = io(SERVER, {
+      path: '/socket.io/',
+      transports: ['polling', 'websocket'],
+      upgrade: true,
+      timeout: 20000,
+      reconnection: true,
+      reconnectionAttempts: 8,
+      reconnectionDelay: 1500,
+      forceNew: false
     });
-    socket.on('rooms:list',rooms=>{
-      $('roomsContainer').innerHTML=rooms.length?rooms.map(r=>'<div class="card" style="text-align:left;padding:10px"><b>Room '+safe(r.code)+'</b><br><small>'+r.players.length+'/4 players</small> <button class="btn join-listed" data-code="'+safe(r.code)+'">Join</button></div>').join(''):'<small style="color:#9aa8b8">No open rooms. Create one!</small>';
-      document.querySelectorAll('.join-listed').forEach(b=>b.onclick=()=>join(b.dataset.code));
+
+    socket.on('connect', () => {
+      status('Server: connected ✓', true);
+      socket.emit('rooms:list');
     });
-    socket.on('room:error',d=>{const msg=typeof d==='string'?d:d?.message||'Room error';status(msg);alert(msg);});
-    socket.on('match:start',d=>{status('Room ready! Shared online gameplay is not implemented yet.',true);alert('Lobby start signal received. Note: real-time shared gameplay is still under development.');});
+
+    socket.on('connect_error', (err) => {
+      const reason = (err && (err.message || err.description || err.type)) || 'unknown';
+      console.warn('[L1P] connect_error', err);
+      status('Server connection failed: ' + reason + ' — try Refresh');
+    });
+
+    socket.on('disconnect', (reason) => {
+      status('Server disconnected (' + (reason || '?') + ')');
+    });
+
+    // --- events must match server.js exactly ---
+    socket.on('room:created', (d) => {
+      currentRoom = d && d.code;
+      isHost = true;
+      isReady = false;
+      if ($('roomCodeInput') && currentRoom) $('roomCodeInput').value = currentRoom;
+      status('Room created: ' + currentRoom, true);
+    });
+
+    socket.on('room:joined', (d) => {
+      currentRoom = d && d.code;
+      isReady = false;
+      if ($('roomCodeInput') && currentRoom) $('roomCodeInput').value = currentRoom;
+      status('Joined room ' + currentRoom, true);
+    });
+
+    socket.on('room:update', (room) => {
+      if (!room) return;
+      currentRoom = room.code;
+      const me = (room.players || []).find(p => p.id === socket.id);
+      isHost = !!(me && me.host);
+      if ($('roomCodeInput')) $('roomCodeInput').value = room.code || '';
+
+      const list = (room.players || []).map(p =>
+        '👤 ' + safe(p.name) + (p.host ? ' 👑' : '') + (p.ready ? ' ✅' : ' ⏳')
+      ).join('<br>');
+
+      if ($('lobbyPlayers')) {
+        $('lobbyPlayers').innerHTML =
+          '<b>Room ' + safe(room.code) + ' • ' + (room.players || []).length + '/4</b><br>' +
+          list +
+          '<div class="row" style="margin-top:8px">' +
+          '<button id="readyOnlineBtn" class="btn">' + (isReady ? 'Unready' : 'Ready') + '</button>' +
+          '<button id="startOnlineBtn" class="btn btn-primary" ' + (!isHost ? 'disabled' : '') + '>Host: Start</button>' +
+          '<button id="leaveOnlineBtn" class="btn">Leave</button></div>';
+
+        const readyBtn = $('readyOnlineBtn');
+        const startBtn = $('startOnlineBtn');
+        const leaveBtn = $('leaveOnlineBtn');
+        if (readyBtn) readyBtn.onclick = () => {
+          isReady = !isReady;
+          socket.emit('room:ready', { ready: isReady });
+          readyBtn.textContent = isReady ? 'Unready' : 'Ready';
+        };
+        if (startBtn) startBtn.onclick = () => socket.emit('room:start');
+        if (leaveBtn) leaveBtn.onclick = () => {
+          socket.emit('room:leave');
+          currentRoom = null;
+          isReady = false;
+          isHost = false;
+          if ($('lobbyPlayers')) $('lobbyPlayers').innerHTML = '';
+          if ($('roomCodeInput')) $('roomCodeInput').value = '';
+          socket.emit('rooms:list');
+          status('Server: connected ✓', true);
+        };
+      }
+    });
+
+    socket.on('rooms:list', (rooms) => {
+      const box = $('roomsContainer');
+      if (!box) return;
+      if (!rooms || !rooms.length) {
+        box.innerHTML = '<small style="color:#9aa8b8">No open rooms. Create one!</small>';
+        return;
+      }
+      box.innerHTML = rooms.map(r =>
+        '<div class="card" style="text-align:left;padding:10px"><b>Room ' + safe(r.code) +
+        '</b><br><small>' + (r.players ? r.players.length : 0) +
+        '/4 players</small> <button class="btn join-listed" data-code="' + safe(r.code) +
+        '">Join</button></div>'
+      ).join('');
+      box.querySelectorAll('.join-listed').forEach(b => {
+        b.onclick = () => join(b.getAttribute('data-code'));
+      });
+    });
+
+    socket.on('room:error', (d) => {
+      const msg = typeof d === 'string' ? d : (d && d.message) || 'Room error';
+      status(msg);
+      try { alert(msg); } catch (e) {}
+    });
+
+    socket.on('match:start', (d) => {
+      status('Match start signal received (shared combat not fully synced yet)', true);
+      try {
+        alert('Lobby start signal received.\\nNote: full real-time shared gameplay is still under development.');
+      } catch (e) {}
+    });
+
     return true;
   }
-  function send(event,payload){if(!connect())return;const emit=()=>socket.emit(event,payload);if(socket.connected)emit();else socket.once('connect',emit);}
-  function playerPayload(){return {name:window.state?.name||localStorage.getItem('l1p_name')||'Player',country:window.state?.country||''};}
-  function create(){isReady=false;send('room:create',playerPayload());}
-  function join(code){if(!code){alert('Enter a room code first.');return;}isReady=false;send('room:join',{...playerPayload(),code});}
-  function refresh(){if(connect()){const emit=()=>socket.emit('rooms:list');if(socket.connected)emit();else socket.once('connect',emit);}}
-  window.addEventListener('load',()=>{
-    if($('createRoomBtn'))$('createRoomBtn').onclick=create;
-    if($('refreshRoomsBtn'))$('refreshRoomsBtn').onclick=refresh;
-    if($('joinRoomBtn'))$('joinRoomBtn').onclick=()=>join(($('roomCodeInput').value||'').trim().toUpperCase());
-    refresh();
-  });
-})();
-</script>
-<script>
-(() => {
-  const $ = id => document.getElementById(id);
-  let socket = null, currentRoom = null;
-  const saved = localStorage.getItem('l1p_server_url') || '';
-  function status(msg, online=false) { const el=$('serverStatus'); if(el){el.textContent=msg;el.className=online?'online':'offline';} }
-  function connect() {
-    const url = localStorage.getItem('l1p_server_url') || '';
-    if (!url) { const entered=prompt('Paste your deployed multiplayer server URL (https://...):'); if(!entered) return false; localStorage.setItem('l1p_server_url',entered.trim().replace(/\/$/,'')); }
-    const base=localStorage.getItem('l1p_server_url');
-    if(socket && socket.connected) return true;
-    try { socket=io(base,{transports:['websocket','polling'],timeout:8000});
-      socket.on('connect',()=>status('Server: connected',true));
-      socket.on('connect_error',()=>status('Server connection failed'));
-      socket.on('room_update', data=>{ if(data.roomCode) { currentRoom=data.roomCode; $('roomCodeInput').value=data.roomCode; } $('lobbyPlayers').innerHTML=(data.players||[]).map(p=>`<div>👤 ${String(p.name).replace(/[&<>"']/g,'')}</div>`).join(''); });
-      socket.on('room_list', rooms=>{ $('roomsContainer').innerHTML=rooms.length?rooms.map(r=>`<div class="card" style="text-align:left;padding:10px"><b>Room ${r.code}</b><br><small>${r.count}/4 players</small> <button class="btn join-listed" data-code="${r.code}">Join</button></div>`).join(''):'<small>No open rooms yet. Create one!</small>'; document.querySelectorAll('.join-listed').forEach(b=>b.onclick=()=>join(b.dataset.code)); });
-      socket.on('room_error', msg=>{status(msg); alert(msg);});
-      return true;
-    } catch(e){status('Could not connect');return false;}
+
+  function send(event, payload) {
+    if (!connect()) return;
+    const emit = () => socket.emit(event, payload);
+    if (socket.connected) emit();
+    else socket.once('connect', emit);
   }
-  function create(){ if(!connect())return; const send=()=>socket.emit('create_room',{name:window.state?.name||localStorage.getItem('l1p_name')||'Player'}); if(socket.connected)send(); else socket.once('connect',send); }
-  function join(code){ if(!connect())return; const send=()=>socket.emit('join_room',{code,name:window.state?.name||localStorage.getItem('l1p_name')||'Player'}); if(socket.connected)send(); else socket.once('connect',send); }
-  function refresh(){ if(!connect())return; const send=()=>socket.emit('list_rooms'); if(socket.connected)send(); else socket.once('connect',send); }
-  window.addEventListener('load',()=>{ if($('createRoomBtn')) $('createRoomBtn').onclick=create; if($('refreshRoomsBtn')) $('refreshRoomsBtn').onclick=refresh; if($('joinRoomBtn')) $('joinRoomBtn').onclick=()=>join(($('roomCodeInput').value||'').trim().toUpperCase()); });
+
+  function create() {
+    isReady = false;
+    send('room:create', playerPayload());
+  }
+
+  function join(code) {
+    code = String(code || '').trim().toUpperCase();
+    if (!code) {
+      try { alert('Enter a room code first.'); } catch (e) {}
+      return;
+    }
+    isReady = false;
+    send('room:join', { ...playerPayload(), code });
+  }
+
+  function refresh() {
+    if (!connect()) return;
+    const emit = () => socket.emit('rooms:list');
+    if (socket.connected) emit();
+    else socket.once('connect', emit);
+  }
+
+  function wireButtons() {
+    if ($('createRoomBtn')) $('createRoomBtn').onclick = create;
+    if ($('refreshRoomsBtn')) $('refreshRoomsBtn').onclick = refresh;
+    if ($('joinRoomBtn')) $('joinRoomBtn').onclick = () =>
+      join(($('roomCodeInput') && $('roomCodeInput').value) || '');
+  }
+
+  if (document.readyState === 'loading') {
+    window.addEventListener('load', () => { wireButtons(); refresh(); });
+  } else {
+    wireButtons();
+    refresh();
+  }
 })();
 </script>
 
