@@ -1,4 +1,7 @@
-const express = require('express');
+
+  }
+  if (room.hostId === socket.id) room.hostId = room.players.keys().next().value;
+  broadcastconst express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
@@ -56,20 +59,31 @@ function publicRoom(room) {
 function broadcastRoom(room) {
   io.to(room.code).emit('room:update', publicRoom(room));
 }
+
 function removeFromRoom(socket) {
   const code = socketRoom.get(socket.id);
   if (!code) return;
+
   const room = rooms.get(code);
   socketRoom.delete(socket.id);
   socket.leave(code);
+
   if (!room) return;
+
   room.players.delete(socket.id);
+
   if (room.players.size === 0) {
     rooms.delete(code);
     return;
   }
-  if (room.hostId === socket.id) room.hostId = room.players.keys().next().value;
+
+  if (room.hostId === socket.id) {
+    room.hostId = room.players.keys().next().value;
+  }
+
   broadcastRoom(room);
+}
+
 }
 function sendError(socket, message) {
   socket.emit('room:error', { message });
