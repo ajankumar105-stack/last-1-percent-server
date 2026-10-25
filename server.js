@@ -1,12 +1,9 @@
 
-  }
-  if (room.hostId === socket.id) room.hostId = room.players.keys().next().value;
-  broadcastconst express = require('express');
+const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const crypto = require('crypto');
-
 const app = express();
 app.use(cors());
 app.get('/', (_req, res) => res.json({
