@@ -1,269 +1,95 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const cors = require('cors');
-const crypto = require('crypto');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
-
-const rooms = new Map();
-const socketRoom = new Map();
-const MAX_PLAYERS = 4;
-
-app.get('/', (_req, res) => {
-  res.json({
-    name: 'Last 1 Percent - Survival online lobby',
-    status: 'ok',
-    featureStatus: {
-      roomCodes: 'enabled',
-      maxPlayersPerRoom: MAX_PLAYERS,
-      readyState: 'enabled',
-      hostStartSignal: 'enabled',
-      synchronizedGameplay: 'enabled (player state relay only)',
-      competitiveProfiles: 'not implemented yet',
-      roomLobby: 'enabled'
-    }
-  });
-});
-
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, rooms: rooms.size });
-});
-
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
-  pingInterval: 25000,
-  pingTimeout: 20000
-});
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-function makeCode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code;
-  do {
-    code = Array.from(
-      crypto.randomBytes(5),
-      b => alphabet[b % alphabet.length]
-    ).join('');
-  } while (rooms.has(code));
+app.get('/health', (req, res) => res.status(200).send('OK'));
+
+const rooms = {};
+
+function generateCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
   return code;
 }
 
-function safeName(value) {
-  const name = String(value || 'Player')
-    .replace(/[<>]/g, '')
-    .trim()
-    .slice(0, 18);
-  return name || 'Player';
-}
+io.on('connection', (socket) => {
+  let currentRoom = null;
 
-function publicRoom(room) {
-  return {
-    code: room.code,
-    players: [...room.players.values()].map(player => ({
-      id: player.id,
-      name: player.name,
-      country: player.country,
-      host: player.id === room.hostId,
-      ready: player.ready
-    })),
-    phase: room.phase
-  };
-}
-
-function broadcastRoom(room) {
-  io.to(room.code).emit('room:update', publicRoom(room));
-}
-
-function removeFromRoom(socket) {
-  const code = socketRoom.get(socket.id);
-  if (!code) return;
-
-  const room = rooms.get(code);
-  socketRoom.delete(socket.id);
-  socket.leave(code);
-
-  if (!room) return;
-
-  room.players.delete(socket.id);
-
-  if (room.players.size === 0) {
-    rooms.delete(code);
-    return;
-  }
-
-  if (room.hostId === socket.id) {
-    room.hostId = room.players.keys().next().value;
-  }
-
-  broadcastRoom(room);
-}
-
-function sendError(socket, message) {
-  socket.emit('room:error', { message });
-}
-
-io.on('connection', socket => {
-  socket.on('rooms:list', () => {
-    socket.emit(
-      'rooms:list',
-      [...rooms.values()]
-        .filter(room => room.phase === 'lobby')
-        .map(publicRoom)
-    );
-  });
-
-  socket.on('room:create', payload => {
-    removeFromRoom(socket);
-
-    const code = makeCode();
+  socket.on('room:create', ({ name, mode }) => {
+    const code = generateCode();
     const room = {
-      code,
-      hostId: socket.id,
-      phase: 'lobby',
-      players: new Map([[socket.id, {
-        id: socket.id,
-        name: safeName(payload && payload.name),
-        country: String((payload && payload.country) || '').slice(0, 40),
-        ready: false
-      }]])
+      code, mode: mode || 'coop', maxPlayers: mode === '4v4' ? 8 : 4,
+      players: [], state: 'lobby', scoreA: 0, scoreB: 0
     };
-
-    rooms.set(code, room);
-    socketRoom.set(socket.id, code);
-    socket.join(code);
-
+    rooms[code] = room; currentRoom = code; socket.join(code);
+    room.players.push({ id: socket.id, name: name || 'Survivor', host: true, ready: false, team: mode === '4v4' ? 'A' : null, x: 0, y: 0, hp: 100, kills: 0 });
     socket.emit('room:created', { code });
-    broadcastRoom(room);
+    io.to(code).emit('room:update', room);
   });
 
-  socket.on('room:join', payload => {
-    const code = String((payload && payload.code) || '')
-      .trim()
-      .toUpperCase();
+  socket.on('room:join', ({ name, code }) => {
+    const room = rooms[code];
+    if (!room) return socket.emit('room:error', 'Room not found');
+    if (room.players.length >= room.maxPlayers) return socket.emit('room:error', 'Room full');
 
-    const room = rooms.get(code);
-
-    if (!room) {
-      return sendError(socket, 'Room not found. Check the code.');
-    }
-
-    if (room.phase !== 'lobby') {
-      return sendError(socket, 'That match has already started.');
-    }
-
-    if (room.players.size >= MAX_PLAYERS) {
-      return sendError(socket, 'Room is full (maximum 4 players).');
-    }
-
-    removeFromRoom(socket);
-
-    room.players.set(socket.id, {
-      id: socket.id,
-      name: safeName(payload && payload.name),
-      country: String((payload && payload.country) || '').slice(0, 40),
-      ready: false
-    });
-
-    socketRoom.set(socket.id, code);
-    socket.join(code);
-
-    socket.emit('room:joined', { code });
-    broadcastRoom(room);
+    currentRoom = code; socket.join(code);
+    const team = room.mode === '4v4' ? (room.players.length % 2 === 0 ? 'A' : 'B') : null;
+    room.players.push({ id: socket.id, name: name || 'Survivor', host: false, ready: false, team, x: 0, y: 0, hp: 100, kills: 0 });
+    io.to(code).emit('room:update', room);
   });
 
-  socket.on('room:ready', payload => {
-    const room = rooms.get(socketRoom.get(socket.id));
-    if (!room || room.phase !== 'lobby') return;
+  socket.on('room:team', ({ team }) => {
+    const room = rooms[currentRoom];
+    if (room) {
+      const p = room.players.find(pl => pl.id === socket.id);
+      if (p) p.team = team;
+      io.to(currentRoom).emit('room:update', room);
+    }
+  });
 
-    const player = room.players.get(socket.id);
-    if (!player) return;
-
-    player.ready = Boolean(payload && payload.ready);
-    broadcastRoom(room);
+  socket.on('room:ready', ({ ready }) => {
+    const room = rooms[currentRoom];
+    if (room) {
+      const p = room.players.find(pl => pl.id === socket.id);
+      if (p) p.ready = ready;
+      io.to(currentRoom).emit('room:update', room);
+    }
   });
 
   socket.on('room:start', () => {
-    const room = rooms.get(socketRoom.get(socket.id));
-
-    if (!room) {
-      return sendError(socket, 'Create or join a room first.');
-    }
-
-    if (room.hostId !== socket.id) {
-      return sendError(socket, 'Only the room host can start the match.');
-    }
-
-    if (room.players.size < 2) {
-      return sendError(socket, 'At least 2 players are needed to start an online match.');
-    }
-
-    const notReady = [...room.players.values()]
-      .filter(player => player.id !== room.hostId && !player.ready);
-
-    if (notReady.length) {
-      return sendError(socket, 'Wait until every other player is ready.');
-    }
-
-    room.phase = 'starting';
-
-    io.to(room.code).emit('match:start', {
-      code: room.code,
-      players: publicRoom(room).players,
-      startedAt: Date.now()
-    });
-
-    broadcastRoom(room);
+    const room = rooms[currentRoom];
+    if (room) { room.state = 'playing'; io.to(currentRoom).emit('match:start', { mode: room.mode }); }
   });
 
-  // This relays player state only, not combat or zombie synchronization.
-  socket.on('game:state', payload => {
-    const code = socketRoom.get(socket.id);
-    const room = rooms.get(code);
-
-    if (!room || room.phase !== 'starting') return;
-
-    const player = room.players.get(socket.id);
-    if (!player || !payload || typeof payload !== 'object') return;
-
-    const clampNumber = (value, min, max) => {
-      const number = Number(value);
-      return Number.isFinite(number)
-        ? Math.max(min, Math.min(max, number))
-        : 0;
-    };
-
-    player.gameState = {
-      id: socket.id,
-      name: safeName(payload.name || player.name),
-      x: clampNumber(payload.x, -100000, 100000),
-      y: clampNumber(payload.y, -100000, 100000),
-      angle: clampNumber(payload.angle, -Math.PI * 4, Math.PI * 4),
-      hp: clampNumber(payload.hp, 0, 100000),
-      level: Math.round(clampNumber(payload.level, 1, 10000)),
-      alive: payload.alive === true,
-      at: Date.now()
-    };
-
-    const players = [...room.players.values()]
-      .filter(item => item.gameState && Date.now() - item.gameState.at < 5000)
-      .map(item => item.gameState);
-
-    io.to(room.code).emit('game:state', {
-      code: room.code,
-      players
-    });
-  });
-
-  socket.on('room:leave', () => removeFromRoom(socket));
-  socket.on('disconnect', () => removeFromRoom(socket));
-});
-
-const port = Number(process.env.PORT || 3000);
-
-server.listen(port, '0.0.0.0', () => {
-  console.log(`Last 1 Percent online lobby listening on port ${port}`);
-});
+  socket.on('match:move', (data) => {
+    const room = rooms[currentRoom];
+    if (!room) return;
+    const p = room.players.find(pl => pl.id === socket.id);
+    if (p) { p.x = data.x; p.y = data.y; p.angle = data.angle; p.hp = data.hp; }
     
+    const map = {};
+    room.players.forEach(pl => map[pl.id] = pl);
+    socket.broadcast.to(currentRoom).emit('match:update', { players: map, scoreA: room.scoreA, scoreB: room.scoreB });
+  });
+
+  socket.on('match:shoot', (data) => {
+    socket.broadcast.to(currentRoom).emit('match:shot', { shooterId: socket.id, ...data });
+  });
+
+  socket.on('disconnect', () => {
+    if (currentRoom && rooms[currentRoom]) {
+      const room = rooms[currentRoom];
+      room.players = room.players.filter(p => p.id !== socket.id);
+      if (room.players.length === 0) delete rooms[currentRoom];
+      else io.to(currentRoom).emit('room:update', room);
+    }
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log('Server online on port ' + PORT));
