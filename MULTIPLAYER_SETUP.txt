@@ -1,0 +1,29 @@
+LAST 1 PERCENT ONLINE — NEXT LEVEL PACKAGE
+
+FILES
+- index.html: game client, original survival/shop/mission/profile systems retained, online lobby/chat, game modes and map themes.
+- server.js: Socket.IO room/lobby service, team assignment, lobby chat, player synchronization, basic server-validated PvP hits and co-op zombie-state relay.
+- package.json: Render/Node dependencies and start command.
+
+FEATURES INCLUDED
+- Co-op Survival (up to 4): host-authoritative zombie positions/health; remote players can request zombie hits which the host applies.
+- 1v1 Duel (2 players), 2v2 Team Battle (4), 4v4 Team Battle (8), and Endless Survival room modes.
+- Team A/B selection in competitive lobbies, ready-up, host start, room codes and room list.
+- Lobby text chat (only in the room lobby).
+- Four selectable visual map themes: Dead City, Biohazard Lab, Dustlands, Night Docks.
+- Smoothed remote-player movement, player name/health labels, minimap markers.
+- Basic server-side PvP ray hit validation, damage and timed respawn.
+- Existing local weapons, coins, skins, pets, missions and survival progression remain in index.html.
+
+DEPLOY
+1. Upload/replace these three files in the root of the GitHub repository: index.html, server.js, package.json.
+2. Render must deploy the same repository/service using `npm start` (package.json provides it).
+3. Wait for Render deploy to finish, then reload the game. If the Render service is configured from a separate repository, upload server.js/package.json to that repository too.
+4. Test with two devices/browsers: room create/join, chat before match, Ready/Start, movement, and PvP hits.
+
+IMPORTANT LIMITS
+- These changes passed JavaScript syntax checks, but this package has not been live-tested with two real devices from this workspace.
+- Map themes are different visual environments on the existing arena; they do not yet have solid walls/collision or separate hand-built level geometry.
+- PvP damage is basic ray/angle-based combat, not a full anti-cheat or production matchmaking system.
+- Co-op shares host-driven zombie state and remote hit requests; player-specific drops/rewards and every survival statistic are not fully server-authoritative/shared yet.
+- Lobby chat is available before a match; in-match voice chat is not included.
