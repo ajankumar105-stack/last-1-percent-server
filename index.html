@@ -593,6 +593,7 @@
     if (reloading || fireCD > 0) return;
     if (wep.kind !== 'melee' && ammo <= 0) { startReload(); return; }
     fireCD = wep.fireRate; player.recoil = 1; sfxShoot();
+    if (window.L1POnline && typeof window.L1POnline.sendShot === 'function') window.L1POnline.sendShot({ weapon: state.weapon });
     let aimX = Math.cos(player.angle), aimY = Math.sin(player.angle);
     let nearest = null, minD = wep.range;
     zombies.forEach(z => { const d = dist(player.x, player.y, z.x, z.y); if (d < minD) { minD = d; nearest = z; } });
@@ -703,6 +704,8 @@
     ui.menu.classList.add('hidden'); ui.gameOver.classList.add('hidden'); ui.pause.classList.add('hidden');
     showWaveBanner('WAVE 1'); updateUI(); ensureAudio(); startMusic(); petPos.x = 0; petPos.y = 0;
   }
+  // Let the online lobby start the existing game without bypassing normal initialization.
+  window.__L1PStartOnlineMatch = () => startNewGame();
   function continueGame() { state.running = true; state.paused = false; state.dead = false; ui.menu.classList.add('hidden'); ui.gameOver.classList.add('hidden'); ammo = getWep().mag; updateUI(); }
   function die() {
     state.dead = true; state.running = false; sfxDie(); saveGame();
@@ -1315,6 +1318,13 @@
     updateUI(); requestAnimationFrame(loop);
   }
   window.__L1PRemotePlayers = remotePlayers;
+  // Render remote firing as a harmless visual tracer; damage is not server-authoritative yet.
+  window.__L1PRemoteShot = data => {
+    if (!data || !Number.isFinite(Number(data.x)) || !Number.isFinite(Number(data.y))) return;
+    const a = Number(data.angle) || 0;
+    const x = Number(data.x) + Math.cos(a) * 28, y = Number(data.y) + Math.sin(a) * 28;
+    bullets.push({ x, y, vx: Math.cos(a) * 560, vy: Math.sin(a) * 560, life: 0.14, dmg: 0, color: '#f5d773', special: null, pierce: 0, r: 3 });
+  };
   requestAnimationFrame(loop);
 })();
 </script>
@@ -1452,6 +1462,8 @@
           currentRoom = null;
           isReady = false;
           isHost = false;
+          const target = window.__L1PRemotePlayers;
+          if (target instanceof Map) target.clear();
           if ($('lobbyPlayers')) $('lobbyPlayers').innerHTML = '';
           if ($('roomCodeInput')) $('roomCodeInput').value = '';
           socket.emit('rooms:list');
@@ -1484,11 +1496,33 @@
       try { alert(msg); } catch (e) {}
     });
 
-    socket.on('match:start', (d) => {
-      status('Match start signal received (shared combat not fully synced yet)', true);
+    socket.on('match:update', (data) => {
+      const target = window.__L1PRemotePlayers;
+      if (!(target instanceof Map) || !data) return;
+      const list = Array.isArray(data.players) ? data.players : Object.values(data.players || {});
+      target.clear();
+      list.forEach(p => {
+        if (p && p.id && p.id !== socket.id && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y))) {
+          target.set(p.id, { ...p, x: Number(p.x), y: Number(p.y) });
+        }
+      });
+    });
+
+    socket.on('match:shot', (data) => {
+      if (typeof window.__L1PRemoteShot === 'function') window.__L1PRemoteShot(data || {});
+    });
+
+    socket.on('match:start', () => {
+      status('Match started — syncing player positions ✓', true);
       try {
-        alert('Lobby start signal received.\\nNote: full real-time shared gameplay is still under development.');
-      } catch (e) {}
+        if (typeof window.__L1PStartOnlineMatch === 'function') window.__L1PStartOnlineMatch();
+      } catch (e) { console.warn('[L1P] online start failed', e); }
+    });
+
+    socket.on('match:end', () => {
+      const target = window.__L1PRemotePlayers;
+      if (target instanceof Map) target.clear();
+      status('Match ended — lobby ready', true);
     });
 
     return true;
