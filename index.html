@@ -264,7 +264,7 @@
   <div id="multiMenu" class="overlay hidden">
     <div class="panel">
       <h2>Squad Rooms</h2>
-      <p style="font-size:12px;color:#8a9bb0;margin-bottom:8px;text-align:center;">Online squad lobby (up to 4 players)</p>
+      <p style="font-size:12px;color:#8a9bb0;margin-bottom:8px;text-align:center;">Online Lobby • PvP • Co-op • Team Chat</p>
       <div id="serverStatus" class="offline">Server: not connected</div>
       <div id="onlineSelfCard" style="margin:8px 0;padding:8px 10px;border-radius:10px;border:1px solid #3a4a5c;background:rgba(20,28,38,0.9);display:flex;gap:8px;align-items:center;">
         <div style="width:40px;height:40px;border-radius:10px;background:#1a2430;border:1px solid #f5d773;display:flex;align-items:center;justify-content:center;font-size:18px;">🎖️</div>
@@ -274,11 +274,13 @@
           <div style="font-size:10px;color:#8a9bb0;" id="onlineSelfGun">Gun Lv.1</div>
         </div>
       </div>
-      <div class="row" style="align-items:center"><select id="roomModeSelect" aria-label="Game mode" style="flex:1;min-width:0;background:#17212c;color:#fff;border:1px solid #3a4a5c;border-radius:8px;padding:9px"><option value="coop">Co-op Survival · 4 Players</option><option value="4v4">Team Battle · 8 Players</option></select></div>
+      <div class="row" style="align-items:center"><select id="roomModeSelect" aria-label="Game mode" style="flex:1;min-width:0;background:#17212c;color:#fff;border:1px solid #3a4a5c;border-radius:8px;padding:9px"><option value="coop">Co-op Zombie Survival · 4</option><option value="duel">1v1 Duel · 2</option><option value="2v2">2v2 Team Battle · 4</option><option value="4v4">4v4 Team Battle · 8</option><option value="survival">Endless Survival · 4</option></select></div>
+      <div class="row" style="margin-top:6px"><select id="roomMapSelect" aria-label="Map" style="flex:1;min-width:0;background:#17212c;color:#fff;border:1px solid #3a4a5c;border-radius:8px;padding:9px"><option value="city">Dead City</option><option value="lab">Biohazard Lab</option><option value="desert">Dustlands</option><option value="docks">Night Docks</option></select></div>
       <div class="row"><button id="createRoomBtn" class="btn btn-primary">Create Room</button><button id="refreshRoomsBtn" class="btn">Refresh</button></div>
       <div class="row" style="margin-top:4px"><button id="wakeServerBtn" class="btn" style="flex:1">Wake Server</button><button id="setServerBtn" class="btn" style="flex:1">Change Server URL</button></div>
       <div class="row" style="margin-top:8px"><input id="roomCodeInput" placeholder="Room code" maxlength="6" style="width:45%;min-width:0"><button id="joinRoomBtn" class="btn">Join Room</button></div>
       <div id="lobbyPlayers" style="font-size:12px;margin-top:8px"></div>
+      <div style="margin-top:8px;border:1px solid #3a4a5c;border-radius:10px;padding:8px;background:rgba(10,15,22,.8)"><b style="font-size:12px">💬 Lobby Chat</b><div id="lobbyChatMessages" role="log" aria-live="polite" style="height:88px;overflow:auto;font-size:11px;text-align:left;margin:6px 0;color:#d8e0ea;white-space:pre-wrap"></div><div class="row"><input id="lobbyChatInput" maxlength="180" placeholder="Message your squad…" style="min-width:0;flex:1"><button id="lobbyChatSend" class="btn btn-primary">Send</button></div></div>
       <div id="roomsContainer" style="margin-top:8px;max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
       <button id="closeMultiBtn" class="btn" style="width:100%;margin-top:12px;">BACK</button>
     </div>
@@ -433,6 +435,7 @@
 
   let state = { running: false, paused: false, dead: false, level: 1, hp: 100, maxHp: 100, xp: 0, coins: 25, kills: 0, weapon: 0, unlocked: [0], skin: 0, skinUnlocked: [0], pet: 0, name: 'Survivor', country: '🇹🇭 Thailand', highWave: 1, rankScore: 0, rankTier: 'Bronze', mvpStars: 0, profileRewardUntil: 0, competitiveStats: { zombieKills: 0, pvpKills: 0, damage: 0, matches: 0, mvps: 0 } };
   try { const s = JSON.parse(localStorage.getItem('l1p_v3') || 'null'); if (s && typeof s === 'object') state = { ...state, ...s, running: false, paused: false, dead: false }; } catch (e) { localStorage.removeItem('l1p_v3'); }
+  window.state = state;
 
   let player = { x: 0, y: 0, speed: 195, angle: 0, recoil: 0 };
   // Remote squad members are drawn in world coordinates when an online match is active.
@@ -593,11 +596,15 @@
     if (reloading || fireCD > 0) return;
     if (wep.kind !== 'melee' && ammo <= 0) { startReload(); return; }
     fireCD = wep.fireRate; player.recoil = 1; sfxShoot();
-    if (window.L1POnline && typeof window.L1POnline.sendShot === 'function') window.L1POnline.sendShot({ weapon: state.weapon });
     let aimX = Math.cos(player.angle), aimY = Math.sin(player.angle);
     let nearest = null, minD = wep.range;
     zombies.forEach(z => { const d = dist(player.x, player.y, z.x, z.y); if (d < minD) { minD = d; nearest = z; } });
     if (nearest) { const a = Math.atan2(nearest.y - player.y, nearest.x - player.x); aimX = Math.cos(a); aimY = Math.sin(a); player.angle = a; }
+    if (['duel','2v2','4v4'].includes(window.__L1PGameMode || '') && remotePlayers.size) {
+      let target = null, best = wep.range; remotePlayers.forEach(rp => { const d = dist(player.x, player.y, rp.x, rp.y); if (d < best && (rp.team !== window.__L1PMyTeam || !window.__L1PMyTeam)) { best = d; target = rp; } });
+      if (target) { player.angle = Math.atan2(target.y-player.y, target.x-player.x); aimX = Math.cos(player.angle); aimY = Math.sin(player.angle); }
+    }
+    if (window.L1POnline && typeof window.L1POnline.sendShot === 'function') window.L1POnline.sendShot({ weapon: wep.name || String(state.weapon), angle: player.angle });
     if (wep.kind === 'melee') {
       zombies.forEach(z => {
         const d = dist(player.x, player.y, z.x, z.y);
@@ -619,6 +626,7 @@
     spawnParticle(muzzleX, muzzleY, wep.color, 0.12, 6);
   }
   function hitZombie(z, dmg, wep) {
+    if (['coop','survival'].includes(window.__L1PGameMode || '') && !window.__L1PIsHost && window.L1POnline && typeof window.L1POnline.sendZombieHit === 'function') { window.L1POnline.sendZombieHit({ id: z.id, damage: Math.min(150, Math.max(1, Number(dmg) || 1)) }); spawnParticle(z.x, z.y, '#f5d773', 0.16, 4); return; }
     let finalDmg = dmg;
     if (state.pet === 4 && Math.random() < 0.18) { finalDmg *= 1.8; addFloat(z.x, z.y-20, 'CRIT!', '#e74c3c', 15); }
     z.hp -= finalDmg; sfxHit();
@@ -689,6 +697,7 @@
     if (type === 'boss') { hp = baseHp * 9; speed = 58; r = 28; }
     if (nightMode && type !== 'boss') { hp *= 1.25; speed *= 1.1; }
     zombies.push({
+      id: 'z' + Date.now().toString(36) + Math.random().toString(36).slice(2,7),
       x: player.x+Math.cos(angle)*d, y: player.y+Math.sin(angle)*d,
       hp, maxHp: hp, speed, r, boss: type==='boss', type, slow: 0
     });
@@ -705,7 +714,9 @@
     showWaveBanner('WAVE 1'); updateUI(); ensureAudio(); startMusic(); petPos.x = 0; petPos.y = 0;
   }
   // Let the online lobby start the existing game without bypassing normal initialization.
-  window.__L1PStartOnlineMatch = () => startNewGame();
+  window.__L1PStartOnlineMatch = info => { window.__L1PGameMode = info && info.mode || 'coop'; window.__L1PMapTheme = info && info.map || window.__L1PMapTheme || 'city'; startNewGame(); };
+  window.__L1PDie = die;
+  window.__L1PRespawnPvP = () => { state.dead = true; state.running = false; addFloat(player.x, player.y - 42, 'ELIMINATED · RESPAWNING', '#ff5252', 16); setTimeout(() => { if (window.__L1PGameMode && ['duel','2v2','4v4'].includes(window.__L1PGameMode)) { state.hp = state.maxHp; state.dead = false; state.paused = false; state.running = true; player.x = rand(-180,180); player.y = rand(-180,180); bullets = []; updateUI(); } }, 2500); };
   function continueGame() { state.running = true; state.paused = false; state.dead = false; ui.menu.classList.add('hidden'); ui.gameOver.classList.add('hidden'); ammo = getWep().mag; updateUI(); }
   function die() {
     state.dead = true; state.running = false; sfxDie(); saveGame();
@@ -1021,7 +1032,7 @@
     const t = $('tipText'); if (t) t.textContent = tipTexts[tipIdx];
   }, 8000);
 
-  let last = performance.now();
+  let last = performance.now(), lastZombieSyncAt = 0;
   function loop(now) {
     let dt = Math.min((now-last)/1000, 0.05); last = now;
     if (state.running && !state.paused && !state.dead) {
@@ -1080,12 +1091,14 @@
         gb.textContent = `Next Boss: Wave ${nextBossWave} • ${missionTxt} • Combo ${combo || 0}`;
       }
 
-      const maxZ = Math.min(12, 6 + Math.floor(state.level * 0.7));
-      if (zombies.length < maxZ && Math.random() < 0.028+state.level*0.0014) spawnZombie(false);
-      if (state.level>=5 && state.level%5===0 && !bossSpawned && zombies.filter(z=>z.boss).length===0) { spawnZombie(true); bossSpawned=true; showWaveBanner('BOSS INCOMING!'); }
+      const competitiveMode = ['duel','2v2','4v4'].includes(window.__L1PGameMode || '');
+      const sharedCoopClient = ['coop','survival'].includes(window.__L1PGameMode || '') && !window.__L1PIsHost;
+      const maxZ = competitiveMode ? 0 : Math.min(12, 6 + Math.floor(state.level * 0.7));
+      if (!competitiveMode && !sharedCoopClient && zombies.length < maxZ && Math.random() < 0.028+state.level*0.0014) spawnZombie(false);
+      if (!competitiveMode && !sharedCoopClient && state.level>=5 && state.level%5===0 && !bossSpawned && zombies.filter(z=>z.boss).length===0) { spawnZombie(true); bossSpawned=true; showWaveBanner('BOSS INCOMING!'); }
       // Night mode: more zombies
-      if (nightMode && zombies.length < maxZ + 3 && Math.random() < 0.03) spawnZombie(false);
-      zombies.forEach(z => {
+      if (!competitiveMode && !sharedCoopClient && nightMode && zombies.length < maxZ + 3 && Math.random() < 0.03) spawnZombie(false);
+      if (!sharedCoopClient) zombies.forEach(z => {
         if (z.slow>0) z.slow-=dt;
         const spd = z.speed*(z.slow>0?0.45:1);
         const a = Math.atan2(player.y-z.y, player.x-z.x);
@@ -1152,17 +1165,36 @@
       if (waveAnnounce>0) { waveAnnounce-=dt; if(waveAnnounce<=0)$('waveBanner').classList.remove('show'); }
       shake = Math.max(0, shake-dt);
     }
+    if (state.running && !state.dead && ['coop','survival'].includes(window.__L1PGameMode || '') && window.__L1PIsHost && performance.now() - lastZombieSyncAt > 160) { lastZombieSyncAt = performance.now(); if (window.L1POnline && window.__L1PGetZombieState) window.L1POnline.sendZombieState({ zombies: window.__L1PGetZombieState(), level: state.level }); }
     if (state.running && !state.dead && performance.now() - lastOnlinePositionAt > 65) {
       lastOnlinePositionAt = performance.now();
       if (window.L1POnline) window.L1POnline.sendPosition({ x: player.x, y: player.y, angle: player.angle, hp: state.hp });
     }
+    remotePlayers.forEach(rp => { if (Number.isFinite(rp.tx) && Number.isFinite(rp.ty)) { const k = 1 - Math.exp(-Math.min(dt, .05) * 15); rp.x += (rp.tx - rp.x) * k; rp.y += (rp.ty - rp.y) * k; } });
     const shx = shake>0?rand(-4,4)*shake:0, shy = shake>0?rand(-4,4)*shake:0;
-    ctx.fillStyle = nightMode ? '#050810' : '#0a0e14'; ctx.fillRect(0,0,w,h);
+    const mapTheme = window.__L1PMapTheme || 'city';
+    const mapBg = { city: nightMode ? '#050810' : '#0a0e14', lab: '#071512', desert: '#17120b', docks: '#07111c' };
+    const mapGrid = { city: '#141c26', lab: '#12352c', desert: '#39301d', docks: '#142c40' };
+    ctx.fillStyle = mapBg[mapTheme] || mapBg.city; ctx.fillRect(0,0,w,h);
     ctx.save(); ctx.translate(w/2-player.x+shx, h/2-player.y+shy);
-    ctx.strokeStyle = '#141c26'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = mapGrid[mapTheme] || mapGrid.city; ctx.lineWidth = 1.5;
     const gs=70, sx=Math.floor((player.x-w)/gs)*gs, ex=Math.floor((player.x+w)/gs)*gs, sy=Math.floor((player.y-h)/gs)*gs, ey=Math.floor((player.y+h)/gs)*gs;
     for (let x=sx;x<ex;x+=gs){ctx.beginPath();ctx.moveTo(x,sy);ctx.lineTo(x,ey);ctx.stroke();}
     for (let y=sy;y<ey;y+=gs){ctx.beginPath();ctx.moveTo(sx,y);ctx.lineTo(ex,y);ctx.stroke();}
+    // Distinct procedural map dressing. Decorations are visual only; combat remains on the existing open arena.
+    const decorColors = { city:'#25313d', lab:'#17483c', desert:'#66502a', docks:'#1d4058' };
+    const cell = 420, dx0 = Math.floor((player.x-w)/cell), dx1 = Math.ceil((player.x+w)/cell), dy0 = Math.floor((player.y-h)/cell), dy1 = Math.ceil((player.y+h)/cell);
+    ctx.fillStyle = decorColors[mapTheme] || decorColors.city; ctx.globalAlpha = 0.58;
+    for (let gx=dx0; gx<=dx1; gx++) for (let gy=dy0; gy<=dy1; gy++) {
+      const seed = Math.abs(Math.sin(gx*127.1 + gy*311.7) * 43758.5453) % 1;
+      if (seed < 0.35) continue;
+      const ox = gx*cell + 55 + seed*100, oy = gy*cell + 55 + ((seed*7919)%1)*100;
+      if (mapTheme === 'lab') { ctx.fillRect(ox,oy,42,68); ctx.strokeStyle='#2a7560'; ctx.strokeRect(ox+5,oy+5,32,58); }
+      else if (mapTheme === 'desert') { ctx.beginPath(); ctx.ellipse(ox,oy,28+seed*20,14+seed*8,seed,0,Math.PI*2); ctx.fill(); }
+      else if (mapTheme === 'docks') { ctx.fillRect(ox,oy,70,28); ctx.fillRect(ox+8,oy+34,44,16); }
+      else { ctx.fillRect(ox,oy,52,52); ctx.fillRect(ox+8,oy+8,36,36); }
+    }
+    ctx.globalAlpha = 1;
     powerups.forEach(p => { const colors={heal:'#2ecc71',ammo:'#3498db',speed:'#f1c40f',damage:'#e74c3c',gunparts:'#f5d773',crate:'#e67e22'}; ctx.fillStyle=colors[p.type]||'#fff'; ctx.beginPath();ctx.arc(p.x,p.y,10+Math.sin(performance.now()/150)*2,0,Math.PI*2);ctx.fill(); ctx.fillStyle='#fff';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.fillText(p.type[0].toUpperCase(),p.x,p.y+4); });
     zombies.forEach(z => {
       ctx.save(); ctx.translate(z.x,z.y);
@@ -1287,6 +1319,13 @@
         ctx.beginPath(); ctx.arc(cx + dx, cy + dy, r, 0, Math.PI * 2); ctx.fill();
       });
 
+      // Online squad/enemy markers
+      remotePlayers.forEach(rp => {
+        const dx = (rp.x - player.x) * scale, dy = (rp.y - player.y) * scale;
+        if (Math.abs(dx) > mm / 2 || Math.abs(dy) > mm / 2) return;
+        ctx.fillStyle = rp.team === 'B' ? '#ff5252' : '#4dd0e1';
+        ctx.beginPath(); ctx.arc(cx + dx, cy + dy, 3.2, 0, Math.PI * 2); ctx.fill();
+      });
       // Player (center) + facing
       ctx.fillStyle = '#f5d773';
       ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
@@ -1318,7 +1357,15 @@
     updateUI(); requestAnimationFrame(loop);
   }
   window.__L1PRemotePlayers = remotePlayers;
-  // Render remote firing as a harmless visual tracer; damage is not server-authoritative yet.
+  window.__L1PGetZombieState = () => zombies.map(z => ({...z}));
+  window.__L1PApplyZombieState = list => { if (Array.isArray(list)) zombies = list.filter(z => z && Number.isFinite(Number(z.x)) && Number.isFinite(Number(z.y))).slice(0, 80).map(z => ({...z, x:Number(z.x), y:Number(z.y)})); };
+  window.__L1PApplyZombieHit = data => { if (!data || !window.__L1PIsHost) return; const z = zombies.find(z => z.id === data.id); if (z) hitZombie(z, Math.min(150, Math.max(1, Number(data.damage) || 1)), null); };
+  window.__L1PShowOnlineHit = data => {
+    const label = data && data.dead ? 'ELIMINATED' : '-' + Math.max(0, Number(data && data.damage) || 0) + ' HP';
+    addFloat(player.x, player.y - 42, label, data && data.dead ? '#ff5252' : '#f5d773', 16);
+    if (data && data.dead) { state.competitiveStats = state.competitiveStats || {pvpKills:0}; state.competitiveStats.pvpKills = (state.competitiveStats.pvpKills || 0) + 1; saveGame(); }
+  };
+  // Remote firing is visual; server validates PvP damage separately.
   window.__L1PRemoteShot = data => {
     if (!data || !Number.isFinite(Number(data.x)) || !Number.isFinite(Number(data.y))) return;
     const a = Number(data.angle) || 0;
@@ -1360,7 +1407,7 @@
   function playerPayload() {
     const name = (window.state && window.state.name) || localStorage.getItem('l1p_name') || 'Player';
     const country = (window.state && window.state.country) || localStorage.getItem('l1p_country') || '';
-    return { name, country, mode: (($('roomModeSelect') && $('roomModeSelect').value) || 'coop') };
+    return { name, country, mode: (($('roomModeSelect') && $('roomModeSelect').value) || 'coop'), map: (($('roomMapSelect') && $('roomMapSelect').value) || 'city') };
   }
 
   function connect() {
@@ -1431,23 +1478,28 @@
     socket.on('room:update', (room) => {
       if (!room) return;
       currentRoom = room.code;
+      window.__L1PMapTheme = room.map || 'city'; window.__L1PCurrentMode = room.mode || 'coop';
       const me = (room.players || []).find(p => p.id === socket.id);
-      isHost = !!(me && me.host);
+      isHost = !!(me && me.host); window.__L1PIsHost = isHost; window.__L1PMyTeam = me && me.team || null; isReady = !!(me && me.ready);
       if ($('roomCodeInput')) $('roomCodeInput').value = room.code || '';
 
       const list = (room.players || []).map(p =>
-        '👤 ' + safe(p.name) + (p.host ? ' 👑' : '') + (p.ready ? ' ✅' : ' ⏳')
+        '👤 ' + safe(p.name) + (p.host ? ' 👑' : '') + (p.team ? ' · Team ' + safe(p.team) : '') + (p.ready ? ' ✅' : ' ⏳')
       ).join('<br>');
 
       if ($('lobbyPlayers')) {
         $('lobbyPlayers').innerHTML =
-          '<b>Room ' + safe(room.code) + ' • ' + (room.players || []).length + '/' + (room.maxPlayers || 4) + ' · ' + safe(room.mode || 'coop') + '</b><br>' +
+          '<b>Room ' + safe(room.code) + ' • ' + (room.players || []).length + '/' + (room.maxPlayers || 4) + ' · ' + safe(room.mode || 'coop') + ' · 🗺️ ' + safe(room.map || 'city') + '</b><br>' +
           list +
+          (room.mode === 'duel' || room.mode === '2v2' || room.mode === '4v4' ? '<div class="row" style="margin-top:6px"><button id="teamABtn" class="btn">Join Team A</button><button id="teamBBtn" class="btn">Join Team B</button></div>' : '') +
           '<div class="row" style="margin-top:8px">' +
           '<button id="readyOnlineBtn" class="btn">' + (isReady ? 'Unready' : 'Ready') + '</button>' +
           '<button id="startOnlineBtn" class="btn btn-primary" ' + (!isHost ? 'disabled' : '') + '>Host: Start</button>' +
           '<button id="leaveOnlineBtn" class="btn">Leave</button></div>';
 
+        const teamABtn = $('teamABtn'), teamBBtn = $('teamBBtn');
+        if (teamABtn) teamABtn.onclick = () => socket.emit('room:team', { team: 'A' });
+        if (teamBBtn) teamBBtn.onclick = () => socket.emit('room:team', { team: 'B' });
         const readyBtn = $('readyOnlineBtn');
         const startBtn = $('startOnlineBtn');
         const leaveBtn = $('leaveOnlineBtn');
@@ -1482,7 +1534,7 @@
       box.innerHTML = rooms.map(r =>
         '<div class="card" style="text-align:left;padding:10px"><b>Room ' + safe(r.code) +
         '</b><br><small>' + (r.players ? r.players.length : 0) +
-        '/4 players</small> <button class="btn join-listed" data-code="' + safe(r.code) +
+        '/' + (r.maxPlayers || 4) + ' · ' + safe(r.mode || 'coop') + '</small> <button class="btn join-listed" data-code="' + safe(r.code) +
         '">Join</button></div>'
       ).join('');
       box.querySelectorAll('.join-listed').forEach(b => {
@@ -1496,26 +1548,52 @@
       try { alert(msg); } catch (e) {}
     });
 
+    socket.on('lobby:chat', (message) => {
+      const box = $('lobbyChatMessages'); if (!box || !message) return;
+      const line = document.createElement('div');
+      const stamp = new Date(Number(message.t) || Date.now()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      line.textContent = '[' + stamp + '] ' + String(message.name || 'Player').slice(0,20) + ': ' + String(message.text || '').slice(0,180);
+      box.appendChild(line); while (box.children.length > 60) box.removeChild(box.firstChild); box.scrollTop = box.scrollHeight;
+    });
+    socket.on('room:map', data => { if (data && data.map) window.__L1PMapTheme = data.map; });
+
     socket.on('match:update', (data) => {
       const target = window.__L1PRemotePlayers;
       if (!(target instanceof Map) || !data) return;
       const list = Array.isArray(data.players) ? data.players : Object.values(data.players || {});
-      target.clear();
+      const seen = new Set();
       list.forEach(p => {
         if (p && p.id && p.id !== socket.id && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y))) {
-          target.set(p.id, { ...p, x: Number(p.x), y: Number(p.y) });
+          seen.add(p.id);
+          const old = target.get(p.id);
+          if (old) { Object.assign(old, p, { tx: Number(p.x), ty: Number(p.y), angle: Number(p.angle) || 0 }); }
+          else target.set(p.id, { ...p, x: Number(p.x), y: Number(p.y), tx: Number(p.x), ty: Number(p.y), angle: Number(p.angle) || 0 });
         }
       });
+      for (const id of target.keys()) if (!seen.has(id)) target.delete(id);
     });
 
+    socket.on('match:zombies', data => { if (data && ['coop','survival'].includes(window.__L1PGameMode || '') && !window.__L1PIsHost && typeof window.__L1PApplyZombieState === 'function') { window.__L1PApplyZombieState(data.zombies || []); if (Number.isFinite(Number(data.level)) && window.state) window.state.level = Math.max(1, Number(data.level)); } });
+    socket.on('match:zombie-hit', data => { if (window.__L1PIsHost && typeof window.__L1PApplyZombieHit === 'function') window.__L1PApplyZombieHit(data); });
     socket.on('match:shot', (data) => {
       if (typeof window.__L1PRemoteShot === 'function') window.__L1PRemoteShot(data || {});
+    });
+
+    socket.on('match:hit', data => {
+      if (!data) return;
+      if (window.state && Number.isFinite(Number(data.hp))) { window.state.hp = Math.max(0, Number(data.hp)); if (window.state.hp <= 0) { if (['duel','2v2','4v4'].includes(window.__L1PGameMode || '') && typeof window.__L1PRespawnPvP === 'function') window.__L1PRespawnPvP(); else if (typeof window.__L1PDie === 'function') window.__L1PDie(); } }
+      if (typeof window.__L1PShowOnlineHit === 'function') window.__L1PShowOnlineHit(data);
+      status(data.dead ? 'You were eliminated by ' + safe(data.from) : 'Hit by ' + safe(data.from) + ' · HP ' + data.hp, true);
+    });
+    socket.on('match:pvp', data => {
+      if (!data) return;
+      if (data.shooterId === socket.id) status('🎯 Hit ' + safe(data.targetName) + ' for ' + data.damage + ' damage', true);
     });
 
     socket.on('match:start', () => {
       status('Match started — syncing player positions ✓', true);
       try {
-        if (typeof window.__L1PStartOnlineMatch === 'function') window.__L1PStartOnlineMatch();
+        if (typeof window.__L1PStartOnlineMatch === 'function') window.__L1PStartOnlineMatch({ mode: window.__L1PCurrentMode || 'coop', map: window.__L1PMapTheme || 'city' });
       } catch (e) { console.warn('[L1P] online start failed', e); }
     });
 
@@ -1569,6 +1647,8 @@
   window.L1POnline = {
     sendPosition(data) { if (socket && socket.connected && currentRoom) socket.emit('match:move', data); },
     sendShot(data) { if (socket && socket.connected && currentRoom) socket.emit('match:shoot', data || {}); },
+    sendZombieState(data) { if (socket && socket.connected && currentRoom) socket.emit('match:zombies', data || {}); },
+    sendZombieHit(data) { if (socket && socket.connected && currentRoom) socket.emit('match:zombie-hit', data || {}); },
     setRemotePlayers(list) {
       const target = window.__L1PRemotePlayers;
       if (target instanceof Map) {
@@ -1577,8 +1657,15 @@
     }
   };
 
+  function sendChat() {
+    const input = $('lobbyChatInput'); if (!input) return;
+    const text = input.value.trim(); if (!text) return;
+    send('lobby:chat', { text }); input.value = '';
+  }
   function wireButtons() {
     if ($('createRoomBtn')) $('createRoomBtn').onclick = create;
+    if ($('lobbyChatSend')) $('lobbyChatSend').onclick = sendChat;
+    if ($('lobbyChatInput')) $('lobbyChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
     if ($('refreshRoomsBtn')) $('refreshRoomsBtn').onclick = refresh;
     if ($('joinRoomBtn')) $('joinRoomBtn').onclick = () =>
       join(($('roomCodeInput') && $('roomCodeInput').value) || '');
