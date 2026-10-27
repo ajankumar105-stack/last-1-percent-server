@@ -11,7 +11,7 @@ const io = new Server(server, {
   pingTimeout: 60000
 });
 app.get('/', (_req, res) => res.status(200).send('Last 1 Percent multiplayer server online'));
-app.get('/health', (_req, res) => res.status(200).json({ ok: true, rooms: Object.keys(rooms).length }));
+app.get('/health', (_req, res) => res.status(200).json({ ok: true, rooms: rooms.size, players: [...rooms.values()].reduce((n, room) => n + room.players.length, 0) }));
 const rooms = new Map();
 const MAX_ROOM_AGE = 6 * 60 * 60 * 1000;
 function cleanName(v) { return String(v || 'Survivor').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, 20) || 'Survivor'; }
@@ -65,9 +65,11 @@ io.on('connection', socket => {
   socket.on('room:join', payload => {
     const code = cleanCode(payload && payload.code), room = rooms.get(code);
     if (!room) return socket.emit('room:error', 'Room not found. Check the code.');
+    if (socket.data.roomCode === code && room.players.some(p => p.id === socket.id)) {
+      return socket.emit('room:joined', { code, mode: room.mode, maxPlayers: room.maxPlayers });
+    }
     if (room.state !== 'lobby') return socket.emit('room:error', 'Match already started.');
     if (room.players.length >= room.maxPlayers) return socket.emit('room:error', 'Room full.');
-    if (socket.data.roomCode === code) return socket.emit('room:joined', { code, mode: room.mode, maxPlayers: room.maxPlayers });
     removePlayer(socket, false);
     const team = room.mode === '4v4' ? (room.players.filter(p => p.team === 'A').length <= room.players.filter(p => p.team === 'B').length ? 'A' : 'B') : null;
     room.players.push({ id: socket.id, name: cleanName(payload && payload.name), country: String(payload && payload.country || '').slice(0, 8), host: false, ready: false, team, x: 0, y: 0, angle: 0, hp: 100, kills: 0 });
