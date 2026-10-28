@@ -1,30 +1,53 @@
-# Last 1 Percent – Survival: online lobby starter
+# Last 1 Percent Online — Upgrade package (Oct 2026)
 
-This adds a real backend for **private 5-character room codes, up to 4 players per room, player lists, ready state, host transfer on disconnect, and host-only match-start signaling**. It does not replace the existing solo game.
+## What this package is
+Upgraded `index.html` (game + lobby client) + `server.js` + `package.json` for your existing Last 1 Percent project.
 
-## Important honest status
-This is **Phase 1: online lobby**. The players are connected through a server, but zombie positions, bullets, health, waves, deaths, revives, and match results are **not yet synchronized**. A `match:start` signal is not a playable shared online match. Do not advertise this as complete online co-op until that gameplay-authority phase is built and tested.
+## Implemented and verified in this environment
+1. **Loading screen** — progress bar, tips, skip/safety timeout, then enters main UI.
+2. **Match start flow** — Host Start closes multi/menu overlays and starts the same match for connected clients (no manual Back needed).
+3. **4 maps with different layouts + solid walls** — Dead City, Biohazard Lab, Dustlands, Night Docks (`city` / `lab` / `desert` / `docks`) with collision via `tryMovePlayer`.
+4. **Humanoid cartoon zombies** — body, legs, arms, head, face (not plain circles).
+5. **Copy room code + Invite share** + `#join=CODE` deep link.
+6. **Avatar image** — local upload stored in `localStorage` (not a permanent account DB).
+7. **Server PvP validation** — rate-limited `match:shoot`, range/angle cone, **no friendly fire** on same team, score A/B.
+8. **Modes on server** — coop, duel, 2v2, 4v4, survival with max player limits.
+9. **Lobby chat** (already present; kept wired).
+10. **Mobile safe-area** tweaks for tip bar / controls.
 
-## Deploy the backend
-1. Upload this folder to a Node.js hosting service that supports long-running WebSocket apps (for example Render or Railway).
-2. Use build/install command `npm install` and start command `npm start`.
-3. Set `PORT` only if the hosting platform requires it; the server reads `process.env.PORT`.
-4. After deploy, open the service URL. It should return JSON with `"status":"ok"`. `/health` should return `{"ok":true,"rooms":0}` when no rooms exist.
-5. Copy the deployed HTTPS URL.
+## Implemented but not fully two-device tested here
+- Real-time PvP damage across two phones (server logic is in place; you must test on two devices).
+- Host zombie authority sync under heavy lag / Render sleep.
+- 4v4 with 8 concurrent players (limit coded; not load-tested).
 
-## Connect the HTML game
-1. Open `Last_1_Percent_Online_Lobby.html` in a text editor.
-2. Find `const MULTIPLAYER_SERVER = (localStorage.getItem('l1p_server_url') || '').replace(/\/+$/, '');`
-3. Replace it with `const MULTIPLAYER_SERVER = 'https://YOUR-DEPLOYED-SERVER.example';` using your actual deployed URL, **or** keep the localStorage option and set `localStorage.setItem('l1p_server_url', 'https://YOUR-DEPLOYED-SERVER.example')` in the browser console.
-4. Host the HTML over HTTPS for reliable mobile browser access. Open the same game URL on two devices, create a room on one, and join using the displayed code on the other.
+## Not implemented (honest limitations)
+- Permanent **friends database** / accounts / login — needs a real DB + auth (room codes + share are the supported invite path).
+- Full **roofless 3D-style animated lobby scene** with 4 walking avatars — UI lobby + in-match remote players instead (2D preserved).
+- Server-authoritative **loot ownership** for every pickup (solo/local still client-side; coop uses host zombie sync).
+- Paid assets / custom music files (procedural beeps remain).
+
+## Deploy — frontend (GitHub Pages)
+1. Replace repo `index.html` with this package’s `index.html`.
+2. Commit + wait for Pages update.
+3. Hard-refresh the game URL on the phone.
+
+## Deploy — backend (Render / Railway / Fly / Koyeb)
+1. Upload folder with `server.js` + `package.json`.
+2. Build: `npm install`
+3. Start: `npm start` (or `node server.js`)
+4. Set env `PORT` if the host requires it.
+5. Open service URL — should return JSON status.
+6. In game ONLINE → **Change Server URL** if needed → paste HTTPS URL (no trailing slash).
+7. Use **Wake Server** after free-tier sleep.
 
 ## Local test
-Requires Node.js 18+:
 ```bash
 npm install
 npm start
 ```
-Then set the game server URL to `http://localhost:3000` on the same computer. For phones on the same Wi-Fi, use the computer's LAN IP instead of `localhost` and allow the port through the firewall.
+Open `index.html` via any static server (or GitHub Pages). Set server URL to `http://localhost:3000` (phones on LAN: use PC IP).
 
-## Next phase
-Implement authoritative shared gameplay: server-owned match state and validated movement/fire/hit events, synced zombies and bosses, health/revives/waves, reconnect handling, anti-cheat, match results, persistent accounts and leaderboard. The existing game's combat loop currently runs locally, so this is a separate integration step.
+## Suggested commit message
+```
+Upgrade maps+walls, humanoid zombies, loading screen, match auto-start, PvP server validation
+```
