@@ -15,7 +15,7 @@ const io = new Server(server, {
 
 app.use(express.json({ limit: '32kb' }));
 
-const INSTANCE_CAP = Math.min(50, Math.max(8, Number(process.env.INSTANCE_CAP) || 24));
+const INSTANCE_CAP = Math.min(16, Math.max(6, Number(process.env.INSTANCE_CAP) || 12)); // free-host friendly
 const rooms = new Map();
 const openInstances = new Map(); // mapKey -> [instanceId,...]
 const leaderboard = []; // { id, name, avatar, score, kills, wave, t }
@@ -198,7 +198,9 @@ function makeBot(room, i) {
 function fillBots(room, targetHumansAndBots) {
   const humans = room.players.filter(p => !p.isBot).length;
   let bots = room.players.filter(p => p.isBot);
-  const want = Math.max(0, Math.min(room.maxPlayers - humans, targetHumansAndBots - humans));
+  // Human slots remain up to maxPlayers (50). AI fills empty space but hard-cap AI count to reduce lag.
+  const AI_CAP = Math.min(8, room.maxPlayers); // enough presence, low lag on free tier
+  const want = Math.max(0, Math.min(AI_CAP, Math.min(room.maxPlayers - humans, (targetHumansAndBots || room.maxPlayers) - humans)));
   while (bots.length > want) {
     const b = bots.pop();
     room.players = room.players.filter(p => p.id !== b.id);
@@ -241,7 +243,7 @@ function createOpenRoom(map) {
   const list = openInstances.get(map) || [];
   list.push(code);
   openInstances.set(map, list);
-  fillBots(room, Math.min(6, room.maxPlayers));
+  fillBots(room, room.maxPlayers); // fill to 50 with AI until humans join
   return room;
 }
 
@@ -277,7 +279,7 @@ io.on('connection', socket => {
       angle: 0
     };
     room.players.push(player);
-    fillBots(room, Math.min(8, room.maxPlayers));
+    fillBots(room, room.maxPlayers);
     socket.join(room.code);
     socket.data.roomCode = room.code;
     socket.data.playerName = player.name;
@@ -583,8 +585,8 @@ setInterval(() => {
     for (const p of room.players) {
       if (!p.isBot) continue;
       p.angle += (Math.random() - 0.5) * 0.4;
-      p.x = Math.max(-700, Math.min(700, p.x + Math.cos(p.angle) * 12));
-      p.y = Math.max(-700, Math.min(700, p.y + Math.sin(p.angle) * 12));
+      p.x = Math.max(-1200, Math.min(1200, p.x + Math.cos(p.angle) * 10));
+      p.y = Math.max(-1000, Math.min(1000, p.y + Math.sin(p.angle) * 10));
       moved = true;
     }
     if (moved) {
@@ -595,7 +597,7 @@ setInterval(() => {
       });
     }
   }
-}, 500).unref();
+}, 1200).unref();
 
 setInterval(() => {
   const now = Date.now();
