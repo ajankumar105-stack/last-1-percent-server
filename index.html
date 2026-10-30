@@ -174,6 +174,28 @@
     #hudSafePad { position:absolute; top:0; left:0; right:0; height: env(safe-area-inset-top, 0px); pointer-events:none; z-index:50; }
     #copyCodeBtn, #inviteShareBtn { font-size:10px; padding:6px 8px; }
 
+    
+    #multiMenu .panel, #endMenu .panel {
+      background:
+        linear-gradient(180deg, rgba(12,18,28,0.88) 0%, rgba(10,14,22,0.94) 100%),
+        radial-gradient(ellipse at 50% 0%, rgba(245,215,115,0.12), transparent 55%),
+        linear-gradient(135deg, #1a2430 0%, #0d1520 40%, #15202b 100%);
+      border: 1px solid #5a4a28;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.65), inset 0 1px 0 rgba(245,215,115,0.15);
+    }
+    #multiMenu::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(circle at 20% 80%, rgba(46,204,113,0.08), transparent 40%),
+        radial-gradient(circle at 80% 20%, rgba(231,76,60,0.1), transparent 35%),
+        repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(255,255,255,0.02) 40px, rgba(255,255,255,0.02) 41px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    #multiMenu .panel { position: relative; z-index: 1; }
+    #liveBoard { max-height: 42vh; overflow-y: auto; }
+
     @keyframes profileGlow { from { filter: drop-shadow(0 0 1px #f5d773); } to { filter: drop-shadow(0 0 8px #f5d773); } }
   </style>
 </head>
@@ -237,8 +259,9 @@
     <div class="panel">
       <h2>Last 1 Percent</h2>
       <p style="text-align:center;margin-bottom:14px;color:#8a9bb0;font-size:13px;">Survive the infected wasteland. Real bullets, bosses, pets & power-ups!</p>
-      <div class="row"><button id="startBtn" class="btn btn-primary">START SURVIVING</button></div>
-      <div class="row"><button id="startOfflineBtn" class="btn btn-primary">OFFLINE MODE</button><button id="startOnlineBtn" class="btn">ONLINE MODE</button></div>
+      <div class="row"><button id="startBtn" class="btn btn-primary">▶ START GAME (ONLINE)</button></div>
+      <p style="text-align:center;font-size:11px;color:#8a9bb0;margin:-4px 0 8px">Free online · ~12 players · AI bots · die = re-enter, score stays</p>
+      <div class="row"><button id="startOfflineBtn" class="btn">Solo Offline</button><button id="menuMultiBtn2" class="btn">Rooms / Code</button></div>
       <div class="row"><button id="continueBtn" class="btn">CONTINUE</button></div>
       <div class="row"><button id="menuRankBtn" class="btn">LEADERBOARD</button><button id="menuMultiBtn" class="btn">ONLINE LOBBY</button></div>
       <div class="row"><button id="menuEventsBtn" class="btn">WEEKEND EVENTS</button><button id="menuAccountBtn" class="btn">ACCOUNT</button></div>
@@ -504,6 +527,11 @@
 
   let state = { running: false, paused: false, dead: false, level: 1, hp: 100, maxHp: 100, xp: 0, coins: 25, kills: 0, weapon: 0, unlocked: [0], skin: 0, skinUnlocked: [0], pet: 0, name: 'Survivor', country: '🇹🇭 Thailand', highWave: 1, rankScore: 0, rankTier: 'Bronze', mvpStars: 0, profileRewardUntil: 0, equippedFrame: '', bagItems: [], eventClaims: {}, top1Until: 0, competitiveStats: { zombieKills: 0, pvpKills: 0, damage: 0, matches: 0, mvps: 0 } };
   try { const s = JSON.parse(localStorage.getItem('l1p_v3') || 'null'); if (s && typeof s === 'object') state = { ...state, ...s, running: false, paused: false, dead: false }; } catch (e) { localStorage.removeItem('l1p_v3'); }
+  if (!Array.isArray(state.unlocked)) state.unlocked = [0];
+  if (!Array.isArray(state.bagItems)) state.bagItems = [];
+  if (!state.eventClaims || typeof state.eventClaims !== 'object') state.eventClaims = {};
+  if (!state.weaponLevels || typeof state.weaponLevels !== 'object') state.weaponLevels = {};
+  if (!state.weaponXp || typeof state.weaponXp !== 'object') state.weaponXp = {};
   window.state = state;
 
   let player = { x: 0, y: 0, speed: 195, angle: 0, recoil: 0 };
@@ -576,7 +604,6 @@
       board.push({ name: state.name, country: state.country, wave: state.level, kills: state.kills, t: Date.now() });
       board.sort((a, b) => b.wave - a.wave || b.kills - a.kills); board = board.slice(0, 15);
       localStorage.setItem('l1p_board', JSON.stringify(board));
-      try { if (typeof checkTop1Frame === 'function') checkTop1Frame(); } catch (e2) {}
     } catch (e) {}
   }
 
@@ -603,7 +630,6 @@
     if (item.type === 'frame' && state.bagItems.some(x => x.type === 'frame' && x.frameId === item.frameId)) return false;
     state.bagItems.unshift(Object.assign({}, item, { id: id, t: Date.now() }));
     if (state.bagItems.length > 40) state.bagItems.length = 40;
-    saveGame();
     return true;
   }
   function grantFrame(frameId, source) {
@@ -645,23 +671,31 @@
     saveGame();
     return { ok: true, coins: coins };
   }
+  let _top1Checking = false;
   function checkTop1Frame() {
-    ensureBag();
-    let top = false;
+    if (_top1Checking) return;
+    _top1Checking = true;
     try {
-      const board = JSON.parse(localStorage.getItem('l1p_board') || '[]');
-      if (board[0] && board[0].name === state.name) top = true;
-    } catch (e) {}
-    const sb = window.__L1PServerBoard;
-    if (Array.isArray(sb) && sb[0] && sb[0].name === state.name) top = true;
-    if (top) {
-      const got = grantFrame('top1', 'leaderboard');
-      state.top1Until = Date.now() + 7 * 24 * 60 * 60 * 1000;
-      if (!state.equippedFrame) state.equippedFrame = 'top1';
-      if (got) {
-        try { addFloat(player.x, player.y - 60, 'TOP 1 FRAME UNLOCKED', '#ff6bff', 18); } catch (e) {}
+      ensureBag();
+      let top = false;
+      try {
+        const board = JSON.parse(localStorage.getItem('l1p_board') || '[]');
+        if (board[0] && board[0].name === state.name) top = true;
+      } catch (e) {}
+      const sb = window.__L1PServerBoard;
+      if (Array.isArray(sb) && sb[0] && sb[0].name === state.name) top = true;
+      if (top) {
+        const already = state.bagItems.some(x => x.type === 'frame' && x.frameId === 'top1');
+        if (!already) {
+          grantFrame('top1', 'leaderboard');
+          try { addFloat(player.x, player.y - 60, 'TOP 1 FRAME UNLOCKED', '#ff6bff', 18); } catch (e) {}
+        }
+        state.top1Until = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        if (!state.equippedFrame) state.equippedFrame = 'top1';
+        saveGame();
       }
-      saveGame();
+    } finally {
+      _top1Checking = false;
     }
   }
   function renderBagUI() {
@@ -718,7 +752,7 @@
   else setTimeout(wireEventClaims, 0);
 
   function addFloat(x, y, text, color = '#f5d773', size = 16) { floatingTexts.push({ x, y, text, color, life: 0.9, size }); }
-  function spawnParticle(x, y, color, life = 0.25, r = 4) { particles.push({ x, y, vx: rand(-40,40), vy: rand(-40,40), life, max: life, color, r }); }
+  function spawnParticle(x, y, color, life = 0.25, r = 4) { if (particles.length > 80) particles.splice(0, particles.length - 60); particles.push({ x, y, vx: rand(-40,40), vy: rand(-40,40), life, max: life, color, r }); }
 
   const zone = $('joystickZone'), knob = $('joystickKnob');
   let touchId = null;
@@ -1002,7 +1036,7 @@
       if (Math.hypot(nx - cx, ny - cy) < rad) return true;
     }
     // Soft world bounds
-    if (Math.abs(nx) > 520 || Math.abs(ny) > 460) return true;
+    if (Math.abs(nx) > 1200 || Math.abs(ny) > 1000) return true;
     return false;
   }
   function tryMovePlayer(dx, dy) {
@@ -1044,9 +1078,48 @@
     showWaveBanner((mode || 'MATCH').toUpperCase() + ' · ' + (window.__L1PMapTheme || 'city').toUpperCase());
   };
   window.__L1PDie = die;
-  window.__L1PRespawnPvP = () => { state.dead = true; state.running = false; addFloat(player.x, player.y - 42, 'ELIMINATED · RESPAWNING', '#ff5252', 16); setTimeout(() => { if (window.__L1PGameMode && ['duel','2v2','4v4'].includes(window.__L1PGameMode)) { state.hp = state.maxHp; state.dead = false; state.paused = false; state.running = true; player.x = rand(-180,180); player.y = rand(-180,180); bullets = []; updateUI(); } }, 2500); };
+  window.__L1PRespawnPvP = () => {
+    state.dead = true; state.running = false;
+    addFloat(player.x, player.y - 42, 'ELIMINATED · RESPAWNING', '#ff5252', 16);
+    const mode = window.__L1PGameMode || '';
+    setTimeout(() => {
+      if (['duel','2v2','4v4','open'].includes(mode) || String(mode).startsWith('event_')) {
+        state.hp = state.maxHp; state.dead = false; state.paused = false; state.running = true;
+        player.x = rand(-220, 220); player.y = rand(-220, 220); bullets = []; ammo = getWep().mag;
+        ui.gameOver.classList.add('hidden'); updateUI();
+      }
+    }, 2500);
+  };
   function continueGame() { state.running = true; state.paused = false; state.dead = false; ui.menu.classList.add('hidden'); ui.gameOver.classList.add('hidden'); ammo = getWep().mag; updateUI(); }
   function die() {
+    // Open world / online: respawn and keep score — no game-over lock
+    if (window.__L1PGameMode === 'open' || String(window.__L1PGameMode || '').startsWith('event_')) {
+      sfxDie();
+      const keepKills = state.kills;
+      const keepScore = state.rankScore;
+      addFloat(player.x, player.y - 50, 'DOWN · RE-ENTER 2.5s', '#ff5252', 16);
+      state.dead = true;
+      state.running = false;
+      try { if (window.__L1PSubmitStats) window.__L1PSubmitStats(); } catch (e) {}
+      setTimeout(() => {
+        state.hp = state.maxHp;
+        state.dead = false;
+        state.paused = false;
+        state.running = true;
+        state.kills = keepKills;
+        state.rankScore = keepScore;
+        player.x = rand(-220, 220);
+        player.y = rand(-220, 220);
+        bullets = [];
+        ammo = getWep().mag;
+        reloading = false;
+        ui.gameOver.classList.add('hidden');
+        showWaveBanner('RE-ENTERED · score kept');
+        updateUI();
+        saveGame();
+      }, 2500);
+      return;
+    }
     state.dead = true; state.running = false; sfxDie(); saveGame();
     $('goStats').textContent = `Wave ${state.level}  •  ${state.kills} kills  •  ${state.coins} coins`;
     try { checkTop1Frame(); if (window.__L1PSubmitStats) window.__L1PSubmitStats(); } catch (e) {}
@@ -1140,8 +1213,24 @@
     const box = $('roomsContainer');
     if (box) box.innerHTML = '<small style="color:#9aa8b8">Connect to server and tap Refresh to see real rooms.</small>';
   }
-  $('startBtn').onclick = startNewGame;
+  function startOnlineWorld() {
+    window.__L1PGameMode = 'open';
+    window.__L1PMapTheme = (document.getElementById('roomMapSelect') && document.getElementById('roomMapSelect').value) || window.__L1PMapTheme || 'city';
+    // Connect + join open world then start local match view
+    try {
+      if (window.L1POnline && window.L1POnline.joinOpenWorld) {
+        window.L1POnline.joinOpenWorld();
+      } else if (typeof window.__L1PJoinOpenWorld === 'function') {
+        window.__L1PJoinOpenWorld();
+      }
+    } catch (e) { console.warn(e); }
+    startNewGame();
+    const lb = document.getElementById('liveBoard');
+    if (lb) lb.style.display = 'block';
+  }
+  $('startBtn').onclick = startOnlineWorld;
   if ($('startOfflineBtn')) $('startOfflineBtn').onclick = () => { window.__L1PGameMode = ''; startNewGame(); };
+  if ($('menuMultiBtn2')) $('menuMultiBtn2').onclick = () => openMenu('multiMenu');
   if ($('startOnlineBtn')) $('startOnlineBtn').onclick = () => openMenu('multiMenu');
   if ($('menuEventsBtn')) $('menuEventsBtn').onclick = () => { openMenu('eventsMenu'); if (window.__L1PRefreshEvents) window.__L1PRefreshEvents(); };
   if ($('menuAccountBtn')) $('menuAccountBtn').onclick = () => openMenu('accountMenu');
@@ -1458,8 +1547,9 @@
 
       const competitiveMode = ['duel','2v2','4v4'].includes(window.__L1PGameMode || '');
       const sharedCoopClient = ['coop','survival'].includes(window.__L1PGameMode || '') && !window.__L1PIsHost;
-      const maxZ = competitiveMode ? 0 : Math.min(18, 8 + Math.floor(state.level * 0.9));
-      if (!competitiveMode && !sharedCoopClient && zombies.length < maxZ && Math.random() < 0.04+state.level*0.002) spawnZombie(false);
+      const onlineOpen = window.__L1PGameMode === 'open';
+      const maxZ = competitiveMode ? 0 : onlineOpen ? Math.min(8, 4 + Math.floor(state.level * 0.35)) : Math.min(12, 6 + Math.floor(state.level * 0.65));
+      if (!competitiveMode && !sharedCoopClient && zombies.length < maxZ && Math.random() < (onlineOpen ? 0.018 : 0.032)+state.level*0.0012) spawnZombie(false);
       // Near-death adrenaline: speed + fire rate feel
       if (state.hp > 0 && state.hp / state.maxHp < 0.28) {
         player.speed = Math.max(player.speed, 240);
@@ -1648,15 +1738,45 @@
     if (wep.kind==='melee') { ctx.fillStyle='#bdc3c7'; ctx.save(); ctx.translate(18-recoilOff,0); ctx.rotate(-0.3+player.recoil*0.8); ctx.fillRect(0,-3,28,5); ctx.fillStyle='#7f8c8d';ctx.fillRect(22,-5,8,9); ctx.restore(); }
     else { ctx.fillStyle='#1a252f';ctx.strokeStyle='#5d6d7e';ctx.lineWidth=1.2; ctx.beginPath();ctx.roundRect(12-recoilOff,-4,24,6,2);ctx.fill();ctx.stroke(); ctx.fillStyle='#85929e';ctx.fillRect(28-recoilOff,-2,12,2.5); ctx.fillStyle='#2c3e50';ctx.fillRect(16,1,5,6); }
     ctx.restore();
-    remotePlayers.forEach(rp => {
+    // Performance: draw humans always + nearest bots (max 25 sprites)
+    const rpList = [];
+    remotePlayers.forEach(rp => { if (Number.isFinite(rp.x) && Number.isFinite(rp.y)) rpList.push(rp); });
+    rpList.sort((a, b) => {
+      const da = (a.isBot ? 1 : 0) * 1e9 + Math.hypot((a.x||0)-player.x, (a.y||0)-player.y);
+      const db = (b.isBot ? 1 : 0) * 1e9 + Math.hypot((b.x||0)-player.x, (b.y||0)-player.y);
+      return da - db;
+    });
+    rpList.slice(0, 25).forEach(rp => {
       if (!Number.isFinite(rp.x) || !Number.isFinite(rp.y)) return;
-      ctx.save(); ctx.translate(rp.x, rp.y); ctx.rotate(Number(rp.angle) || 0);
+      ctx.save(); ctx.translate(rp.x, rp.y);
+      // body
+      ctx.save(); ctx.rotate(Number(rp.angle) || 0);
       ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(0, 9, 18, 12, 0, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = rp.team === 'B' ? '#e74c3c' : '#3498db'; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.roundRect(-10, -12, 20, 25, 6); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#f5d773'; ctx.fillRect(5, -3, 20, 5);
-      ctx.rotate(-(Number(rp.angle) || 0)); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(String(rp.name || 'Player').slice(0, 18), 0, -23);
-      ctx.fillStyle = '#202830'; ctx.fillRect(-15, -31, 30, 4); ctx.fillStyle = '#2ecc71'; ctx.fillRect(-15, -31, 30 * Math.max(0, Math.min(1, (Number(rp.hp) || 0) / 100)), 4); ctx.restore();
+      ctx.fillStyle = rp.isBot ? '#7f8c8d' : (rp.team === 'B' ? '#e74c3c' : '#3498db');
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-10, -12, 20, 25, 6); ctx.fill(); ctx.stroke(); }
+      else { ctx.fillRect(-10, -12, 20, 25); }
+      ctx.fillStyle = '#f5d773'; ctx.fillRect(5, -3, 18, 5);
+      ctx.restore();
+      // profile pic above head
+      const pr = 12;
+      ctx.beginPath(); ctx.arc(0, -28, pr, 0, Math.PI*2); ctx.fillStyle = '#1a2430'; ctx.fill();
+      ctx.strokeStyle = rp.isBot ? '#95a5a6' : '#f5d773'; ctx.lineWidth = 2; ctx.stroke();
+      if (rp._avatarImg && rp._avatarImg.complete && rp._avatarImg.naturalWidth) {
+        ctx.save(); ctx.beginPath(); ctx.arc(0, -28, pr - 1, 0, Math.PI*2); ctx.clip();
+        ctx.drawImage(rp._avatarImg, -pr + 1, -28 - pr + 1, (pr - 1) * 2, (pr - 1) * 2);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#ecf0f1'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+        ctx.fillText(rp.isBot ? 'AI' : String(rp.name || '?').slice(0, 1).toUpperCase(), 0, -24);
+      }
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(String(rp.name || 'Player').slice(0, 14) + (rp.isBot ? ' ·AI' : ''), 0, -44);
+      ctx.fillStyle = '#f5d773'; ctx.font = '10px system-ui';
+      ctx.fillText('★ ' + Math.floor(Number(rp.score) || ((rp.kills || 0) * 3)), 0, -54);
+      ctx.fillStyle = '#202830'; ctx.fillRect(-16, -18, 32, 4);
+      ctx.fillStyle = '#2ecc71'; ctx.fillRect(-16, -18, 32 * Math.max(0, Math.min(1, (Number(rp.hp) || 100) / 100)), 4);
+      ctx.restore();
     });
     ctx.restore();
     floatingTexts.forEach(f => { const sx=w/2+(f.x-player.x), sy=h/2+(f.y-player.y); ctx.globalAlpha=Math.min(1,f.life*1.5); ctx.fillStyle=f.color; ctx.font=`bold ${f.size||15}px system-ui`; ctx.textAlign='center'; ctx.fillText(f.text,sx,sy); ctx.globalAlpha=1; });
@@ -1935,14 +2055,17 @@
     const board = $('liveBoard'); const list = $('liveBoardList');
     if (board && list && state.running) {
       board.style.display = 'block';
-      const rows = [{ name: state.name||'You', score: (state.kills||0)*3+(state.level||1)*10, kills: state.kills||0, me: true }];
-      remotePlayers.forEach(rp => rows.push({ name: rp.name||'P', score: rp.score||((rp.kills||0)*3), kills: rp.kills||0, bot: !!rp.isBot }));
+      const rows = [{ name: state.name||'You', score: (state.kills||0)*3+(state.level||1)*10, kills: state.kills||0, me: true, bot: false }];
+      remotePlayers.forEach(rp => rows.push({ name: rp.name||'P', score: Number(rp.score)||((rp.kills||0)*3), kills: rp.kills||0, bot: !!rp.isBot }));
       rows.sort((a,b)=>b.score-a.score);
-      list.innerHTML = rows.slice(0,6).map((r,i)=>'<div>'+(i+1)+'. '+(r.me?'<b>':'')+String(r.name).slice(0,10)+(r.me?'</b>':'')+(r.bot?' ·AI':'')+' · '+r.score+'</div>').join('');
+      const humans = rows.filter(r=>!r.bot).length;
+      const bots = rows.filter(r=>r.bot).length;
+      list.innerHTML = '<div style="color:#8a9bb0;margin-bottom:4px">Players '+humans+' · AI '+bots+' · free max ~12</div>' +
+        rows.slice(0,12).map((r,i)=>'<div style="display:flex;justify-content:space-between;gap:6px"><span>'+(i+1)+'. '+(r.me?'<b>':'')+String(r.name).slice(0,12)+(r.me?'</b>':'')+(r.bot?' ·AI':'')+'</span><span style="color:#f5d773">'+r.score+'</span></div>').join('');
     } else if (board && !state.running) board.style.display = 'none';
     if (!state.running || !window.L1POnline) return;
     const now = performance.now();
-    if (now - lastMoveSend > 50) {
+    if (now - lastMoveSend > 80) {
       lastMoveSend = now;
       window.L1POnline.sendPosition({ x: player.x, y: player.y, angle: player.angle, hp: state.hp });
     }
@@ -2160,8 +2283,22 @@
         if (p && p.id && p.id !== socket.id && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y))) {
           seen.add(p.id);
           const old = target.get(p.id);
-          if (old) { Object.assign(old, p, { tx: Number(p.x), ty: Number(p.y), angle: Number(p.angle) || 0 }); }
-          else target.set(p.id, { ...p, x: Number(p.x), y: Number(p.y), tx: Number(p.x), ty: Number(p.y), angle: Number(p.angle) || 0 });
+          if (old) {
+            Object.assign(old, p, { tx: Number(p.x), ty: Number(p.y), angle: Number(p.angle) || 0, score: p.score, kills: p.kills, isBot: !!p.isBot, hp: p.hp });
+            if (p.avatar && p.avatar !== old._avatarUrl) {
+              old._avatarUrl = p.avatar;
+              const img = new Image(); img.onload = () => { old._avatarImg = img; };
+              try { img.src = p.avatar; } catch (e) {}
+            }
+          } else {
+            const np = { ...p, x: Number(p.x), y: Number(p.y), tx: Number(p.x), ty: Number(p.y), angle: Number(p.angle) || 0, isBot: !!p.isBot };
+            if (p.avatar) {
+              np._avatarUrl = p.avatar;
+              const img = new Image(); img.onload = () => { np._avatarImg = img; };
+              try { img.src = p.avatar; } catch (e) {}
+            }
+            target.set(p.id, np);
+          }
         }
       });
       for (const id of target.keys()) if (!seen.has(id)) target.delete(id);
@@ -2175,7 +2312,7 @@
 
     socket.on('match:hit', data => {
       if (!data) return;
-      if (window.state && Number.isFinite(Number(data.hp))) { window.state.hp = Math.max(0, Number(data.hp)); if (window.state.hp <= 0) { if (['duel','2v2','4v4'].includes(window.__L1PGameMode || '') && typeof window.__L1PRespawnPvP === 'function') window.__L1PRespawnPvP(); else if (typeof window.__L1PDie === 'function') window.__L1PDie(); } }
+      if (window.state && Number.isFinite(Number(data.hp))) { window.state.hp = Math.max(0, Number(data.hp)); if (window.state.hp <= 0) { const m = window.__L1PGameMode || ''; if ((['duel','2v2','4v4','open'].includes(m) || String(m).startsWith('event_')) && typeof window.__L1PRespawnPvP === 'function') window.__L1PRespawnPvP(); else if (typeof window.__L1PDie === 'function') window.__L1PDie(); } }
       if (typeof window.__L1PShowOnlineHit === 'function') window.__L1PShowOnlineHit(data);
       status(data.dead ? 'You were eliminated by ' + safe(data.from) : 'Hit by ' + safe(data.from) + ' · HP ' + data.hp, true);
     });
@@ -2258,6 +2395,12 @@
     sendZombieHit(data) { if (socket && socket.connected && currentRoom) socket.emit('match:zombie-hit', data || {}); },
     claimLoot(id) { if (socket && socket.connected && currentRoom) socket.emit('match:loot-claim', { id }); },
     submitStats(data) { if (socket && socket.connected) socket.emit('stats:submit', data || {}); },
+    joinOpenWorld() {
+      const payload = playerPayload();
+      payload.mode = 'open';
+      payload.avatar = (localStorage.getItem('l1p_avatar') || '').slice(0, 200);
+      send('world:join', payload);
+    },
     setRemotePlayers(list) {
       const target = window.__L1PRemotePlayers;
       if (target instanceof Map) {
